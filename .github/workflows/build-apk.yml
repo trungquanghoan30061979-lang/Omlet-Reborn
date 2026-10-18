@@ -1,0 +1,43 @@
+
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Download and extract project
+        run: |
+          curl -L -o source.zip https://github.com/trungquanghoan30061979-lang/Omlet-Reborn/raw/refs/heads/main/OmletReborn-PlayStore-MVP.zip
+          unzip -q source.zip -d project
+          cd project
+          gradle assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: OmletReborn-debug-apk
+          path: project/app/build/outputs/apk/debug/app-debug.apk
+          
