@@ -524,6 +524,32 @@ private fun ProfilePage(
         Text(if (signedIn) userEmail else "Tài khoản của bạn", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Text(if (signedIn) "Đã đăng nhập" else "Đăng nhập để sử dụng tài khoản.", color = Muted)
         Spacer(Modifier.height(20.dp))
+        val context = androidx.compose.ui.platform.LocalContext.current
+        var bubbleEnabled by remember { mutableStateOf(false) }
+        Button(
+            onClick = {
+                if (bubbleEnabled) {
+                    context.stopService(android.content.Intent(context, ChatBubbleService::class.java))
+                    bubbleEnabled = false
+                } else if (!android.provider.Settings.canDrawOverlays(context)) {
+                    val intent = android.content.Intent(
+                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        android.net.Uri.parse("package:${context.packageName}")
+                    )
+                    context.startActivity(intent)
+                } else {
+                    context.startForegroundService(android.content.Intent(context, ChatBubbleService::class.java))
+                    bubbleEnabled = true
+                }
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = if (bubbleEnabled) Color(0xFF24415F) else Blue)
+        ) { Text(if (bubbleEnabled) "Tắt bong bóng chat" else "Bật bong bóng chat nổi") }
+        Text(
+            if (bubbleEnabled) "Bong bóng đang bật. Có thể kéo trên màn hình."
+            else "Cho phép hiển thị trên ứng dụng khác để dùng bong bóng khi chơi Minecraft.",
+            color = Muted, fontSize = 11.sp
+        )
+        Spacer(Modifier.height(8.dp))
         if (signedIn) Button(onClick = onSignOut) { Text("Đăng xuất") }
         else Button(onClick = onLogin) { Text("Đăng nhập / Đăng ký") }
         if (!authReady) Text("Dịch vụ tài khoản cần được cấu hình Firebase.", color = Muted, fontSize = 11.sp)
