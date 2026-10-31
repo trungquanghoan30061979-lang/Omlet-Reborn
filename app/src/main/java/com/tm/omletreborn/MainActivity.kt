@@ -44,7 +44,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun OmletApp() {
-    var page by remember { mutableStateOf("home") }
+    var page by remember { mutableStateOf(if (FirebaseAuth.getInstance().currentUser == null) "login" else "home") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
@@ -122,7 +122,7 @@ fun OmletApp() {
                                 userEmail = ""
                                 page = "home"
                             })
-                        else -> HomePage({ page = "rooms" }, { page = "login" })
+                        else -> HomePage({ page = "rooms" })
                     }
                 }
                 NavigationBar(containerColor = Navy, contentColor = Color.White) {
@@ -171,7 +171,7 @@ private fun firebaseError(error: Exception?): String {
 }
 
 @Composable
-private fun HomePage(onExplore: () -> Unit, onLogin: () -> Unit) {
+private fun HomePage(onExplore: () -> Unit) {
     LazyColumn(
         Modifier.fillMaxSize().background(PageBg).padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -199,11 +199,6 @@ private fun HomePage(onExplore: () -> Unit, onLogin: () -> Unit) {
         item { Text("Khám phá Omlet", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold) }
         item { FeatureCard(Icons.Default.Groups, "Phòng chơi", "Tìm người chơi và lập nhóm Minecraft PE.", Blue) }
         item { FeatureCard(Icons.Default.Videocam, "Khoảnh khắc & phát trực tiếp", "Không gian chia sẻ video đang được phát triển.", Color(0xFF8057E8)) }
-        item {
-            OutlinedButton(onClick = onLogin, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(14.dp)) {
-                Text("Đăng nhập / Tạo tài khoản")
-            }
-        }
     }
 }
 
@@ -229,11 +224,26 @@ private data class GameRoom(
     val name: String,
     val game: String,
     val description: String,
+    val version: String,
     val hostUid: String,
     val hostEmail: String,
     val maxPlayers: Long,
     val members: List<String>
 )
+
+private object MinecraftVersions {
+    val all = listOf(
+        "1.12.0", "1.12.1", "1.13.0", "1.13.1",
+        "1.14.0", "1.14.1", "1.15.0", "1.15.1",
+        "1.16.0", "1.16.1", "1.16.2", "1.16.3", "1.16.4", "1.16.5", "1.16.10", "1.16.20", "1.16.40", "1.16.100", "1.16.200", "1.16.201", "1.16.210", "1.16.220", "1.16.221",
+        "1.17.0", "1.17.1", "1.17.2", "1.17.10", "1.17.11", "1.17.30", "1.17.32", "1.17.40", "1.17.41",
+        "1.18.0", "1.18.1", "1.18.2", "1.18.10", "1.18.11", "1.18.12", "1.18.30", "1.18.31", "1.18.32",
+        "1.19.0", "1.19.1", "1.19.2", "1.19.10", "1.19.11", "1.19.20", "1.19.21", "1.19.30", "1.19.31", "1.19.40", "1.19.41", "1.19.50", "1.19.51", "1.19.60", "1.19.62", "1.19.70", "1.19.71", "1.19.80", "1.19.81", "1.19.83",
+        "1.20.0", "1.20.1", "1.20.10", "1.20.12", "1.20.15", "1.20.30", "1.20.32", "1.20.40", "1.20.41", "1.20.50", "1.20.51", "1.20.60", "1.20.62", "1.20.70", "1.20.71", "1.20.80", "1.20.81",
+        "1.21.0", "1.21.1", "1.21.2", "1.21.20", "1.21.21", "1.21.30", "1.21.31", "1.21.40", "1.21.41", "1.21.50", "1.21.51", "1.21.60", "1.21.62", "1.21.70", "1.21.72", "1.21.80", "1.21.81", "1.21.90", "1.21.93", "1.21.100", "1.21.101", "1.21.110", "1.21.111", "1.21.120", "1.21.121", "1.21.124",
+        "v26.0", "v26.1", "v26.2", "v26.3", "v26.4", "v26.40"
+    )
+}
 
 @Composable
 private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit) {
@@ -248,6 +258,8 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
     var game by remember { mutableStateOf("Minecraft PE") }
     var description by remember { mutableStateOf("") }
     var maxPlayers by remember { mutableStateOf("8") }
+    var minecraftVersion by remember { mutableStateOf("v26.40") }
+    var versionMenu by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
 
     DisposableEffect(signedIn) {
@@ -270,6 +282,7 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                                 data["name"] as? String ?: "Phòng chưa đặt tên",
                                 data["game"] as? String ?: "Minecraft PE",
                                 data["description"] as? String ?: "",
+                                data["version"] as? String ?: "Chưa chọn",
                                 data["hostUid"] as? String ?: "",
                                 data["hostEmail"] as? String ?: "Người chơi",
                                 (data["maxPlayers"] as? Number)?.toLong() ?: 8L,
@@ -329,7 +342,7 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                                 Text("${room.members.size}/${room.maxPlayers}", color = Cyan, fontSize = 12.sp)
                             }
                             Spacer(Modifier.height(5.dp))
-                            Text(room.game + " • Chủ phòng: " + room.hostEmail.substringBefore("@"), color = Muted, fontSize = 11.sp)
+                            Text(room.game + " • " + room.version + " • Chủ phòng: " + room.hostEmail.substringBefore("@"), color = Muted, fontSize = 11.sp)
                             if (room.description.isNotBlank()) {
                                 Spacer(Modifier.height(6.dp))
                                 Text(room.description, color = Color(0xFFD2E1F3), fontSize = 13.sp)
@@ -385,6 +398,22 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(value = game, onValueChange = { game = it.take(30) }, label = { Text("Game") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
+                Box {
+                    OutlinedButton(onClick = { versionMenu = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Phiên bản Minecraft: $minecraftVersion")
+                        Spacer(Modifier.weight(1f))
+                        Icon(Icons.Default.ArrowDropDown, null)
+                    }
+                    DropdownMenu(expanded = versionMenu, onDismissRequest = { versionMenu = false }, modifier = Modifier.heightIn(max = 320.dp)) {
+                        MinecraftVersions.all.forEach { v ->
+                            DropdownMenuItem(text = { Text(v) }, onClick = {
+                                minecraftVersion = v
+                                versionMenu = false
+                            })
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
                 OutlinedTextField(value = description, onValueChange = { description = it.take(120) }, label = { Text("Mô tả (không bắt buộc)") }, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(value = maxPlayers, onValueChange = { maxPlayers = it.filter(Char::isDigit).take(2) }, label = { Text("Số người tối đa (2–20)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -401,6 +430,7 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                                 "name" to roomName.trim(),
                                 "game" to game.trim().ifBlank { "Minecraft PE" },
                                 "description" to description.trim(),
+                                "version" to minecraftVersion,
                                 "hostUid" to uid,
                                 "hostEmail" to (userEmail.ifBlank { "Người chơi" }),
                                 "maxPlayers" to (maxPlayers.toLongOrNull() ?: 8L),
@@ -415,6 +445,7 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                                     roomName = ""
                                     description = ""
                                     maxPlayers = "8"
+                                    minecraftVersion = "v26.40"
                                     info = "Tạo phòng thành công! Mã phòng: ${it.id.takeLast(6).uppercase()}"
                                 }
                                 .addOnFailureListener {
