@@ -42,7 +42,10 @@ fun OmletApp() {
     var message by remember { mutableStateOf("") }
     var signedIn by remember { mutableStateOf(false) }
     var userEmail by remember { mutableStateOf("") }
-    val authReady = remember { FirebaseApp.getApps(androidx.compose.ui.platform.LocalContext.current).isNotEmpty() }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val authReady = remember(context) {
+        FirebaseApp.getApps(context).isNotEmpty() || FirebaseApp.initializeApp(context) != null
+    }
 
     MaterialTheme(colorScheme = lightColorScheme(primary = Blue, background = Pale, surface = Color.White)) {
         Surface(Modifier.fillMaxSize(), color = Pale) {
