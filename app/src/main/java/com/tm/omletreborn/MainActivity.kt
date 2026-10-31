@@ -320,7 +320,7 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                 else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(rooms.size) { index ->
                         val room = rooms[index]
-                        val joined = user?.uid in room.members
+                        val joined = user?.uid?.let { it in room.members } == true
                         Column(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(18.dp)).padding(16.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.SportsEsports, null, tint = Cyan)
@@ -366,7 +366,7 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                                             }.addOnSuccessListener { info = "Đã tham gia phòng!" ; busy = false }
                                                 .addOnFailureListener { error = it.localizedMessage ?: "Không thể tham gia."; busy = false }
                                         }
-                                    ) { Text(if (room.members.size >= room.maxPlayers) "Đã đầy" else "Tham gia") }
+                                    ) { Text(if (room.members.size.toLong() >= room.maxPlayers) "Đã đầy" else "Tham gia") }
                                 }
                             }
                         }
