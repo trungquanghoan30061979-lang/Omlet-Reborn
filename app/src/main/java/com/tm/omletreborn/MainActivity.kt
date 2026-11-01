@@ -455,9 +455,12 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                                 "createdAt" to FieldValue.serverTimestamp()
                             )
                             val roomRef = db.collection("rooms").document()
-                            roomRef.set(data).addOnCompleteListener { result ->
+                            var completed = false
+                            fun finishCreate(success: Boolean, message: String? = null) {
+                                if (completed) return
+                                completed = true
                                 busy = false
-                                if (result.isSuccessful) {
+                                if (success) {
                                     val roomCode = roomRef.id.takeLast(6).uppercase()
                                     showCreate = false
                                     roomName = ""
@@ -465,18 +468,51 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                                     maxPlayers = "8"
                                     minecraftVersion = "v26.40"
                                     info = "Tạo phòng thành công! Mã phòng: $roomCode"
-                                    android.widget.Toast.makeText(context, "Tạo phòng thành công! Mã: $roomCode", android.widget.Toast.LENGTH_LONG).show()
-                                    val minecraftIntent = context.packageManager.getLaunchIntentForPackage(ChatBubbleService.MINECRAFT_PACKAGE)
+                                    android.widget.Toast.makeText(
+                                        context, "Tạo phòng thành công! Mã: $roomCode",
+                                        android.widget.Toast.LENGTH_LONG
+                                    ).show()
+                                    val minecraftIntent = context.packageManager
+                                        .getLaunchIntentForPackage(ChatBubbleService.MINECRAFT_PACKAGE)
                                     if (minecraftIntent != null) {
                                         minecraftIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        context.startActivity(minecraftIntent)
+                                        try {
+                                            context.startActivity(minecraftIntent)
+                                        } catch (_: Exception) {
+                                            error = "Phòng đã tạo ($roomCode), nhưng không mở được Minecraft."
+                                        }
                                     } else {
-                                        error = "Đã tạo phòng nhưng chưa tìm thấy Minecraft PE trên thiết bị."
+                                        error = "Phòng đã tạo ($roomCode) nhưng chưa tìm thấy Minecraft PE."
                                     }
                                 } else {
-                                    error = result.exception?.localizedMessage ?: "Không thể tạo phòng. Kiểm tra mạng và Firestore Rules."
+                                    error = message ?: "Tạo phòng chưa thành công. Hãy kiểm tra mạng rồi thử lại."
                                 }
                             }
+
+                            roomRef.set(data)
+                                .addOnSuccessListener {
+                                    finishCreate(true)
+                                }
+                                .addOnFailureListener { e ->
+                                    finishCreate(false, e.localizedMessage ?: "Firestore từ chối tạo phòng.")
+                                }
+
+                            // Nếu phản hồi ghi bị treo, xác minh trực tiếp trên máy chủ thay vì để nút quay mãi.
+                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                if (!completed) {
+                                    roomRef.get(com.google.firebase.firestore.Source.SERVER)
+                                        .addOnSuccessListener { saved ->
+                                            if (saved.exists() && saved.getString("hostUid") == uid) {
+                                                finishCreate(true)
+                                            } else {
+                                                finishCreate(false, "Máy chủ chưa xác nhận phòng được tạo. Kiểm tra kết nối rồi thử lại.")
+                                            }
+                                        }
+                                        .addOnFailureListener {
+                                            finishCreate(false, "Chưa nhận được xác nhận từ máy chủ. Kiểm tra mạng rồi thử lại; đừng bấm tạo liên tục.")
+                                        }
+                                }
+                            }, 15000L)
                         }
                     ) { Text(if (busy) "Đang tạo..." else "Tạo") }
                 }
