@@ -45,12 +45,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        val usageAllowed = appOps.checkOpNoThrow(
-            AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName
-        ) == AppOpsManager.MODE_ALLOWED
-        if (android.provider.Settings.canDrawOverlays(this) && usageAllowed) {
-            startForegroundService(android.content.Intent(this, ChatBubbleService::class.java))
+        // Bong bóng luôn nổi trên các ứng dụng khác; không cần quyền Usage Access.
+        if (android.provider.Settings.canDrawOverlays(this)) {
+            val serviceIntent = android.content.Intent(this, ChatBubbleService::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) startForegroundService(serviceIntent)
+            else startService(serviceIntent)
         }
     }
 }
@@ -612,11 +611,14 @@ private fun ProfilePage(
                     android.net.Uri.parse("package:${context.packageName}")
                 ))
             } else {
-                context.startActivity(android.content.Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                val serviceIntent = android.content.Intent(context, ChatBubbleService::class.java)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) context.startForegroundService(serviceIntent)
+                else context.startService(serviceIntent)
+                android.widget.Toast.makeText(context, "Bong bóng Omlet đã bật và sẽ luôn hiển thị khi chuyển ứng dụng.", android.widget.Toast.LENGTH_LONG).show()
             }
-        }, modifier = Modifier.fillMaxWidth()) { Text("Thiết lập bong bóng tự động trong Minecraft") }
+        }, modifier = Modifier.fillMaxWidth()) { Text("Bật bong bóng chat nổi") }
         Text(
-            "Chỉ cần cấp quyền một lần: hiển thị trên ứng dụng khác và quyền truy cập sử dụng. Sau đó bong bóng tự xuất hiện khi mở Minecraft PE, và tự ẩn khi thoát game.",
+            "Cấp quyền hiển thị trên ứng dụng khác một lần. Bong bóng sẽ tiếp tục hiện khi rời Minecraft; kéo bong bóng xuống dấu × ở cuối màn hình để ẩn. Mở lại Omlet để bật lại.",
             color = Muted, fontSize = 11.sp, lineHeight = 16.sp
         )
         Spacer(Modifier.height(8.dp))
