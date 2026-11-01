@@ -277,6 +277,7 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
     var minecraftVersion by remember { mutableStateOf("v26.40") }
     var versionMenu by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var pendingRoomId by remember { mutableStateOf<String?>(null) }
 
     DisposableEffect(signedIn) {
         if (!signedIn) {
@@ -319,12 +320,14 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                 Text("Phòng chơi", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
                 Text("Tạo phòng hoặc tìm đồng đội để chơi cùng.", color = Muted, fontSize = 12.sp)
             }
-            Button(onClick = {
-                if (signedIn) showCreate = true else onLogin()
-            }, shape = RoundedCornerShape(13.dp)) {
+            Button(
+                enabled = pendingRoomId == null,
+                onClick = { if (signedIn) showCreate = true else onLogin() },
+                shape = RoundedCornerShape(13.dp)
+            ) {
                 Icon(Icons.Default.Add, null)
                 Spacer(Modifier.width(5.dp))
-                Text("Tạo phòng")
+                Text(if (pendingRoomId == null) "Tạo phòng" else "Đang đồng bộ")
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -335,6 +338,7 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
         } else {
             if (info.isNotBlank()) Text(info, color = Cyan, fontSize = 12.sp)
             if (error.isNotBlank()) Text(error, color = Color(0xFFFF8A80), fontSize = 12.sp)
+            if (pendingRoomId != null) Text("Phòng đang chờ đồng bộ với máy chủ. Không tạo phòng mới lúc này; khi kết nối ổn định, thao tác sẽ tự hoàn tất hoặc báo lỗi cụ thể.", color = Color(0xFFFFC76B), fontSize = 12.sp)
             when {
                 loading -> CircularProgressIndicator(color = Cyan, modifier = Modifier.align(Alignment.CenterHorizontally))
                 rooms.isEmpty() -> Column(
@@ -459,6 +463,7 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                             fun finishCreate(success: Boolean, message: String? = null) {
                                 if (completed) return
                                 completed = true
+                                pendingRoomId = null
                                 busy = false
                                 if (success) {
                                     val roomCode = roomRef.id.takeLast(6).uppercase()
@@ -494,7 +499,12 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                                     finishCreate(true)
                                 }
                                 .addOnFailureListener { e ->
-                                    finishCreate(false, e.localizedMessage ?: "Firestore từ chối tạo phòng.")
+                                    val firestoreError = e as? com.google.firebase.firestore.FirebaseFirestoreException
+                                    val detail = buildString {
+                                        append(firestoreError?.code?.name ?: e.javaClass.simpleName)
+                                        e.localizedMessage?.takeIf { it.isNotBlank() }?.let { append(": "); append(it) }
+                                    }
+                                    finishCreate(false, "Không tạo được phòng — $detail")
                                 }
 
                             // Nếu phản hồi ghi bị treo, xác minh trực tiếp trên máy chủ thay vì để nút quay mãi.
@@ -504,12 +514,23 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                                         .addOnSuccessListener { saved ->
                                             if (saved.exists() && saved.getString("hostUid") == uid) {
                                                 finishCreate(true)
-                                            } else {
-                                                finishCreate(false, "Máy chủ chưa xác nhận phòng được tạo. Kiểm tra kết nối rồi thử lại.")
+                                            } else if (!completed) {
+                                                // Chưa thấy trên máy chủ tại thời điểm kiểm tra không đồng nghĩa lệnh ghi đã thất bại.
+                                                // Giữ callback set() hoạt động để nhận kết quả muộn, tránh tạo trùng phòng.
+                                                busy = false
+                                                pendingRoomId = roomRef.id
+                                                info = "Đang chờ máy chủ xác nhận phòng. Không cần bấm tạo lại."
                                             }
                                         }
-                                        .addOnFailureListener {
-                                            finishCreate(false, "Chưa nhận được xác nhận từ máy chủ. Kiểm tra mạng rồi thử lại; đừng bấm tạo liên tục.")
+                                        .addOnFailureListener { checkError ->
+                                            if (!completed) {
+                                                // Không khóa kết quả của set(): nếu lệnh ghi thành công muộn, callback bên trên vẫn xử lý.
+                                                busy = false
+                                                pendingRoomId = roomRef.id
+                                                val code = (checkError as? com.google.firebase.firestore.FirebaseFirestoreException)?.code?.name
+                                                    ?: checkError.javaClass.simpleName
+                                                info = "Chưa xác minh được với máy chủ ($code). Phòng có thể đang chờ đồng bộ; đừng tạo lại."
+                                            }
                                         }
                                 }
                             }, 15000L)
