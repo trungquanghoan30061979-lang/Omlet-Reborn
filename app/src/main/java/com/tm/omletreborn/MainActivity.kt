@@ -1,6 +1,8 @@
 package com.tm.omletreborn
 
 import android.os.Bundle
+import android.app.AppOpsManager
+import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -39,6 +41,17 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { OmletApp() }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val usageAllowed = appOps.checkOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName
+        ) == AppOpsManager.MODE_ALLOWED
+        if (android.provider.Settings.canDrawOverlays(this) && usageAllowed) {
+            startForegroundService(android.content.Intent(this, ChatBubbleService::class.java))
+        }
     }
 }
 
@@ -250,6 +263,7 @@ private object MinecraftVersions {
 @Composable
 private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit) {
     val db = remember { FirebaseFirestore.getInstance() }
+    val context = androidx.compose.ui.platform.LocalContext.current
     val user = FirebaseAuth.getInstance().currentUser
     var rooms by remember { mutableStateOf<List<GameRoom>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -440,20 +454,29 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                                 "status" to "open",
                                 "createdAt" to FieldValue.serverTimestamp()
                             )
-                            db.collection("rooms").add(data)
-                                .addOnSuccessListener {
-                                    busy = false
+                            val roomRef = db.collection("rooms").document()
+                            roomRef.set(data).addOnCompleteListener { result ->
+                                busy = false
+                                if (result.isSuccessful) {
+                                    val roomCode = roomRef.id.takeLast(6).uppercase()
                                     showCreate = false
                                     roomName = ""
                                     description = ""
                                     maxPlayers = "8"
                                     minecraftVersion = "v26.40"
-                                    info = "Tạo phòng thành công! Mã phòng: ${it.id.takeLast(6).uppercase()}"
+                                    info = "Tạo phòng thành công! Mã phòng: $roomCode"
+                                    android.widget.Toast.makeText(context, "Tạo phòng thành công! Mã: $roomCode", android.widget.Toast.LENGTH_LONG).show()
+                                    val minecraftIntent = context.packageManager.getLaunchIntentForPackage(ChatBubbleService.MINECRAFT_PACKAGE)
+                                    if (minecraftIntent != null) {
+                                        minecraftIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        context.startActivity(minecraftIntent)
+                                    } else {
+                                        error = "Đã tạo phòng nhưng chưa tìm thấy Minecraft PE trên thiết bị."
+                                    }
+                                } else {
+                                    error = result.exception?.localizedMessage ?: "Không thể tạo phòng. Kiểm tra mạng và Firestore Rules."
                                 }
-                                .addOnFailureListener {
-                                    busy = false
-                                    error = it.localizedMessage ?: "Không thể tạo phòng. Kiểm tra Firestore Rules."
-                                }
+                            }
                         }
                     ) { Text(if (busy) "Đang tạo..." else "Tạo") }
                 }
@@ -525,29 +548,19 @@ private fun ProfilePage(
         Text(if (signedIn) "Đã đăng nhập" else "Đăng nhập để sử dụng tài khoản.", color = Muted)
         Spacer(Modifier.height(20.dp))
         val context = androidx.compose.ui.platform.LocalContext.current
-        var bubbleEnabled by remember { mutableStateOf(false) }
-        Button(
-            onClick = {
-                if (bubbleEnabled) {
-                    context.stopService(android.content.Intent(context, ChatBubbleService::class.java))
-                    bubbleEnabled = false
-                } else if (!android.provider.Settings.canDrawOverlays(context)) {
-                    val intent = android.content.Intent(
-                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        android.net.Uri.parse("package:${context.packageName}")
-                    )
-                    context.startActivity(intent)
-                } else {
-                    context.startForegroundService(android.content.Intent(context, ChatBubbleService::class.java))
-                    bubbleEnabled = true
-                }
-            },
-            colors = ButtonDefaults.buttonColors(containerColor = if (bubbleEnabled) Color(0xFF24415F) else Blue)
-        ) { Text(if (bubbleEnabled) "Tắt bong bóng chat" else "Bật bong bóng chat nổi") }
+        Button(onClick = {
+            if (!android.provider.Settings.canDrawOverlays(context)) {
+                context.startActivity(android.content.Intent(
+                    android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    android.net.Uri.parse("package:${context.packageName}")
+                ))
+            } else {
+                context.startActivity(android.content.Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS))
+            }
+        }, modifier = Modifier.fillMaxWidth()) { Text("Thiết lập bong bóng tự động trong Minecraft") }
         Text(
-            if (bubbleEnabled) "Bong bóng đang bật. Có thể kéo trên màn hình."
-            else "Cho phép hiển thị trên ứng dụng khác để dùng bong bóng khi chơi Minecraft.",
-            color = Muted, fontSize = 11.sp
+            "Chỉ cần cấp quyền một lần: hiển thị trên ứng dụng khác và quyền truy cập sử dụng. Sau đó bong bóng tự xuất hiện khi mở Minecraft PE, và tự ẩn khi thoát game.",
+            color = Muted, fontSize = 11.sp, lineHeight = 16.sp
         )
         Spacer(Modifier.height(8.dp))
         if (signedIn) Button(onClick = onSignOut) { Text("Đăng xuất") }
