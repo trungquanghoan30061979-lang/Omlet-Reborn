@@ -16,6 +16,8 @@ import com.google.firebase.firestore.ListenerRegistration
 import kotlin.math.abs
 
 class ChatBubbleService : Service() {
+    companion object { const val MINECRAFT_PACKAGE = "com.mojang.minecraftpe" }
+
     private lateinit var wm: WindowManager
     private var bubble: TextView? = null
     private var panel: View? = null
