@@ -105,25 +105,11 @@ fun OmletApp() {
                         "login" -> AuthPage(
                             email, { email = it }, password, { password = it }, message,
                             authReady, { message = it },
-                            { isRegister ->
-                                if (!authReady) {
-                                    message = "Chưa tìm thấy cấu hình Firebase. Cần đặt google-services.json trong thư mục app/."
-                                } else {
-                                    val auth = FirebaseAuth.getInstance()
-                                    val task = if (isRegister)
-                                        auth.createUserWithEmailAndPassword(email.trim(), password)
-                                    else auth.signInWithEmailAndPassword(email.trim(), password)
-                                    task.addOnCompleteListener { result ->
-                                        if (result.isSuccessful) {
-                                            signedIn = true
-                                            userEmail = auth.currentUser?.email.orEmpty()
-                                            message = ""
-                                            page = "profile"
-                                        } else {
-                                            message = firebaseError(result.exception)
-                                        }
-                                    }
-                                }
+                            { authenticatedEmail ->
+                                signedIn = true
+                                userEmail = authenticatedEmail
+                                message = ""
+                                page = "home"
                             }
                         )
                         "rooms" -> RoomsPage(signedIn, userEmail, { page = "login" })
@@ -549,42 +535,174 @@ private fun AuthPage(
     email: String, onEmail: (String) -> Unit,
     password: String, onPassword: (String) -> Unit,
     message: String, authReady: Boolean, onMessage: (String) -> Unit,
-    onSubmit: (Boolean) -> Unit
+    onAuthenticated: (String) -> Unit
 ) {
-    var register by remember { mutableStateOf(false) }
+    var step by remember { mutableStateOf("login") }
+    var code by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    var verificationToken by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    val functions = remember { com.google.firebase.functions.FirebaseFunctions.getInstance("asia-southeast1") }
+    val auth = remember { FirebaseAuth.getInstance() }
+
+    fun showError(error: Exception?) {
+        val callable = error as? com.google.firebase.functions.FirebaseFunctionsException
+        onMessage(callable?.message ?: error?.localizedMessage ?: "Có lỗi xảy ra. Hãy thử lại.")
+        busy = false
+    }
+
     Column(
         Modifier.fillMaxSize().background(PageBg).padding(24.dp),
         verticalArrangement = Arrangement.Center
     ) {
-        Text(if (register) "Tạo tài khoản" else "Chào mừng trở lại", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
+        Text(
+            when(step) {
+                "email" -> "Đăng ký • Email"
+                "code" -> "Xác minh email"
+                "details" -> "Hoàn tất tài khoản"
+                else -> "Chào mừng trở lại"
+            },
+            color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold
+        )
         Spacer(Modifier.height(6.dp))
-        Text("Đăng nhập để tiếp tục với Omlet Reborn.", color = Muted)
+        Text(
+            when(step) {
+                "email" -> "Nhập email để nhận mã xác minh 6 chữ số."
+                "code" -> "Nhập mã được gửi tới $email."
+                "details" -> "Email đã xác minh. Tạo thông tin tài khoản của bạn."
+                else -> "Đăng nhập để tiếp tục với Omlet Reborn."
+            },
+            color = Muted
+        )
         Spacer(Modifier.height(22.dp))
-        OutlinedTextField(
-            value = email, onValueChange = onEmail, modifier = Modifier.fillMaxWidth(),
-            label = { Text("Địa chỉ email") }, singleLine = true
-        )
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
-            value = password, onValueChange = onPassword, modifier = Modifier.fillMaxWidth(),
-            label = { Text("Mật khẩu") }, singleLine = true,
-            visualTransformation = PasswordVisualTransformation()
-        )
-        Spacer(Modifier.height(18.dp))
-        Button(
-            onClick = { onMessage(""); onSubmit(register) },
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            enabled = email.contains("@") && password.length >= 6
-        ) { Text(if (register) "Đăng ký" else "Đăng nhập") }
-        TextButton(onClick = { register = !register; onMessage("") }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-            Text(if (register) "Đã có tài khoản? Đăng nhập" else "Chưa có tài khoản? Đăng ký")
-        }
-        if (message.isNotBlank()) Text(message, color = Color(0xFFFF8A80), fontSize = 12.sp)
-        if (!authReady) {
-            Text(
-                "Firebase chưa sẵn sàng: kiểm tra tệp app/google-services.json và cấu hình ứng dụng Android.",
-                color = Muted, fontSize = 11.sp, lineHeight = 16.sp
+
+        if (step == "login" || step == "email") {
+            OutlinedTextField(
+                value = email, onValueChange = onEmail, modifier = Modifier.fillMaxWidth(),
+                label = { Text("Địa chỉ email") }, singleLine = true,
+                enabled = !busy
             )
+        }
+        if (step == "login") {
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = password, onValueChange = onPassword, modifier = Modifier.fillMaxWidth(),
+                label = { Text("Mật khẩu") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation(), enabled = !busy
+            )
+            Spacer(Modifier.height(18.dp))
+            Button(
+                onClick = {
+                    busy = true; onMessage("")
+                    auth.signInWithEmailAndPassword(email.trim(), password)
+                        .addOnSuccessListener { busy = false; onAuthenticated(email.trim()) }
+                        .addOnFailureListener { showError(it) }
+                },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                enabled = !busy && authReady && email.contains("@") && password.isNotBlank()
+            ) { Text(if (busy) "Đang đăng nhập..." else "Đăng nhập") }
+            TextButton(onClick = { step = "email"; onMessage("") }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                Text("Chưa có tài khoản? Đăng ký")
+            }
+        } else if (step == "email") {
+            Spacer(Modifier.height(18.dp))
+            Button(
+                onClick = {
+                    busy = true; onMessage("")
+                    functions.getHttpsCallable("requestEmailOtp").call(mapOf("email" to email.trim()))
+                        .addOnSuccessListener {
+                            busy = false; step = "code"
+                            onMessage("Đã gửi mã. Mã có hiệu lực trong 10 phút.")
+                        }
+                        .addOnFailureListener { showError(it) }
+                },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                enabled = !busy && authReady && email.contains("@")
+            ) { Text(if (busy) "Đang gửi mã..." else "Gửi mã xác minh") }
+            TextButton(onClick = { step = "login"; onMessage("") }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                Text("Quay lại đăng nhập")
+            }
+        } else if (step == "code") {
+            OutlinedTextField(
+                value = code, onValueChange = { code = it.filter(Char::isDigit).take(6) },
+                modifier = Modifier.fillMaxWidth(), label = { Text("Mã xác minh 6 chữ số") },
+                singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                enabled = !busy
+            )
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = {
+                    busy = true; onMessage("")
+                    functions.getHttpsCallable("verifyEmailOtp").call(mapOf("email" to email.trim(), "code" to code))
+                        .addOnSuccessListener { result ->
+                            @Suppress("UNCHECKED_CAST")
+                            val data = result.data as? Map<String, Any>
+                            verificationToken = data?.get("verificationToken") as? String ?: ""
+                            busy = false
+                            if (verificationToken.isNotBlank()) { step = "details"; onMessage("Email đã xác minh thành công.") }
+                            else onMessage("Không nhận được phiên xác minh. Hãy gửi mã mới.")
+                        }
+                        .addOnFailureListener { showError(it) }
+                },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                enabled = !busy && code.length == 6
+            ) { Text(if (busy) "Đang xác minh..." else "Xác minh mã") }
+            TextButton(
+                onClick = {
+                    busy = true; onMessage("")
+                    functions.getHttpsCallable("requestEmailOtp").call(mapOf("email" to email.trim()))
+                        .addOnSuccessListener { busy = false; code = ""; onMessage("Đã gửi mã mới. Kiểm tra email.") }
+                        .addOnFailureListener { showError(it) }
+                },
+                enabled = !busy, modifier = Modifier.align(Alignment.CenterHorizontally)
+            ) { Text("Gửi lại mã") }
+        } else {
+            OutlinedTextField(
+                value = username, onValueChange = { username = it.take(24) },
+                modifier = Modifier.fillMaxWidth(), label = { Text("Username (3–24 ký tự)") },
+                singleLine = true, enabled = !busy
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = password, onValueChange = onPassword,
+                modifier = Modifier.fillMaxWidth(), label = { Text("Mật khẩu (ít nhất 8 ký tự)") },
+                singleLine = true, visualTransformation = PasswordVisualTransformation(), enabled = !busy
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = confirmPassword, onValueChange = { confirmPassword = it },
+                modifier = Modifier.fillMaxWidth(), label = { Text("Xác nhận mật khẩu") },
+                singleLine = true, visualTransformation = PasswordVisualTransformation(), enabled = !busy
+            )
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = {
+                    busy = true; onMessage("")
+                    functions.getHttpsCallable("completeRegistration").call(
+                        mapOf("email" to email.trim(), "password" to password, "username" to username.trim(), "verificationToken" to verificationToken)
+                    ).addOnSuccessListener { result ->
+                        @Suppress("UNCHECKED_CAST")
+                        val data = result.data as? Map<String, Any>
+                        val token = data?.get("customToken") as? String
+                        if (token.isNullOrBlank()) { busy = false; onMessage("Máy chủ không trả về token đăng nhập.") }
+                        else auth.signInWithCustomToken(token)
+                            .addOnSuccessListener { busy = false; onAuthenticated(email.trim()) }
+                            .addOnFailureListener { showError(it) }
+                    }.addOnFailureListener { showError(it) }
+                },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                enabled = !busy && username.trim().length >= 3 && password.length >= 8 && password == confirmPassword
+            ) { Text(if (busy) "Đang tạo tài khoản..." else "Tạo tài khoản") }
+        }
+
+        if (message.isNotBlank()) {
+            Spacer(Modifier.height(12.dp))
+            Text(message, color = if (message.contains("thành công") || message.contains("Đã gửi")) Cyan else Color(0xFFFF8A80), fontSize = 12.sp)
+        }
+        if (!authReady) {
+            Spacer(Modifier.height(8.dp))
+            Text("Firebase chưa sẵn sàng: kiểm tra app/google-services.json.", color = Muted, fontSize = 11.sp)
         }
     }
 }
