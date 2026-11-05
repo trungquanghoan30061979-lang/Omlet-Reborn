@@ -29,6 +29,19 @@ class ChatBubbleService : Service() {
     private var messageInput: EditText? = null
     private var status: TextView? = null
     private lateinit var bubbleParams: WindowManager.LayoutParams
+    private val heartbeatHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val heartbeatTask = object : Runnable {
+        override fun run() {
+            val uid = FirebaseAuth.getInstance().currentUser?.uid
+            if (uid != null) {
+                FirebaseFirestore.getInstance().collection("rooms").whereEqualTo("hostUid", uid).whereEqualTo("status", "open").get()
+                    .addOnSuccessListener { snapshot -> snapshot.documents.forEach { doc ->
+                        doc.reference.update("lastHeartbeat", com.google.firebase.firestore.FieldValue.serverTimestamp())
+                    } }
+            }
+            heartbeatHandler.postDelayed(this, 15000L)
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -38,6 +51,7 @@ class ChatBubbleService : Service() {
         startForeground(2401, nb.setSmallIcon(android.R.drawable.sym_action_chat).setContentTitle("Omlet Reborn").setContentText("Bong bóng chat đang hoạt động").setOngoing(true).build())
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         showBubble()
+        heartbeatHandler.post(heartbeatTask)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -108,7 +122,7 @@ class ChatBubbleService : Service() {
         root.addView(label("Kéo M đến vị trí tùy ý. Nút × chỉ đóng bảng và hiện lại bong bóng."))
         panel=root
         bubble?.visibility=View.GONE
-        runCatching { wm.addView(root,lp(dp(330),WindowManager.LayoutParams.WRAP_CONTENT,true).apply { gravity=Gravity.CENTER }) }.onFailure { panel=null; bubble?.visibility=View.VISIBLE }
+        runCatching { wm.addView(root,lp(dp(340), (resources.displayMetrics.heightPixels * 0.78f).toInt(), true).apply { gravity=Gravity.RIGHT or Gravity.CENTER_VERTICAL; x=0; y=0 }) }.onFailure { panel=null; bubble?.visibility=View.VISIBLE }
         listenRooms()
     }
 
@@ -120,14 +134,17 @@ class ChatBubbleService : Service() {
             val box=roomList ?: return@addSnapshotListener
             box.removeAllViews()
             if(err!=null) { status?.text="Không tải được phòng. Kiểm tra Firestore Rules."; return@addSnapshotListener }
-            val docs=snap?.documents.orEmpty()
+            val docs=snap?.documents.orEmpty().filter { d ->
+                val heartbeat=d.getTimestamp("lastHeartbeat")
+                heartbeat != null && System.currentTimeMillis()-heartbeat.toDate().time <= 45000L
+            }
             val own=docs.filter { it.getString("hostUid")==uid }
             status?.text=if(own.isNotEmpty()) "MAP CỦA BẠN • ${own.size} map online" else "MAP ĐANG ONLINE • ${docs.size}"
             val shown=if(own.isNotEmpty()) own else docs
             if(shown.isEmpty()) box.addView(label("Chưa có map thật nào đang mở."))
             shown.forEach { d ->
                 val n=d.getString("name") ?: "Map Minecraft"
-                val count=(d.get("members") as? List<*>)?.size ?: 1
+                val count=(d.get("members") as? List<*>)?.filterIsInstance<String>()?.distinct()?.size ?: 1
                 val max=d.getLong("maxPlayers") ?: 8L
                 val row=LinearLayout(this).apply {
                     orientation=LinearLayout.VERTICAL; setPadding(dp(9),dp(7),dp(9),dp(7))
@@ -171,6 +188,6 @@ class ChatBubbleService : Service() {
         bubble?.visibility=View.VISIBLE
     }
 
-    override fun onDestroy() { closePanel(); bubble?.let { runCatching { wm.removeView(it) } }; bubble=null; super.onDestroy() }
+    override fun onDestroy() { heartbeatHandler.removeCallbacks(heartbeatTask); closePanel(); bubble?.let { runCatching { wm.removeView(it) } }; bubble=null; super.onDestroy() }
     override fun onBind(intent:Intent?):IBinder?=null
 }
