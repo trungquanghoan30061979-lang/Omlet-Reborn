@@ -102,27 +102,26 @@ exports.verifyEmailOtp = onCall({
   const db = getFirestore();
   const ref = db.collection("registrationOtps").doc(digest(email, OTP_HMAC_SECRET.value()));
   const sessionToken = crypto.randomBytes(32).toString("hex");
-  await db.runTransaction(async (tx) => {
+  const outcome = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
-    if (!snap.exists || snap.get("consumed") === true) {
-      throw new HttpsError("not-found", "Không tìm thấy mã. Hãy yêu cầu gửi mã mới.");
-    }
-    if (snap.get("expiresAt")?.toMillis?.() < Date.now()) {
-      throw new HttpsError("deadline-exceeded", "Mã đã hết hạn. Hãy gửi mã mới.");
-    }
-    if ((snap.get("attempts") || 0) >= MAX_ATTEMPTS) {
-      throw new HttpsError("resource-exhausted", "Bạn đã nhập sai quá số lần cho phép. Hãy gửi mã mới.");
-    }
+    if (!snap.exists || snap.get("consumed") === true) return "missing";
+    if (!snap.get("expiresAt") || snap.get("expiresAt").toMillis() < Date.now()) return "expired";
+    if ((snap.get("attempts") || 0) >= MAX_ATTEMPTS) return "locked";
     if (snap.get("codeHash") !== digest(code, OTP_HMAC_SECRET.value())) {
       tx.update(ref, { attempts: FieldValue.increment(1) });
-      throw new HttpsError("permission-denied", "Mã xác minh không chính xác.");
+      return "wrong";
     }
     tx.update(ref, {
       verified: true,
       verifiedAt: FieldValue.serverTimestamp(),
       sessionHash: digest(sessionToken, OTP_HMAC_SECRET.value())
     });
+    return "verified";
   });
+  if (outcome === "missing") throw new HttpsError("not-found", "Không tìm thấy mã. Hãy yêu cầu gửi mã mới.");
+  if (outcome === "expired") throw new HttpsError("deadline-exceeded", "Mã đã hết hạn. Hãy gửi mã mới.");
+  if (outcome === "locked") throw new HttpsError("resource-exhausted", "Bạn đã nhập sai quá số lần cho phép. Hãy gửi mã mới.");
+  if (outcome === "wrong") throw new HttpsError("permission-denied", "Mã xác minh không chính xác.");
   return { ok: true, verificationToken: sessionToken };
 });
 
