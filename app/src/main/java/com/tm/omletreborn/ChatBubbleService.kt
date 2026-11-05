@@ -163,7 +163,7 @@ class ChatBubbleService : Service() {
                                     .addOnFailureListener { status?.text="Không đổi được trạng thái map. Kiểm tra Firestore Rules." }
                             }
                         }
-                        row.addView(toggle)
+                        addView(toggle)
                     }
                     setOnClickListener { selectedRoom=d.id; listenMessages(d.id) }
                 }
