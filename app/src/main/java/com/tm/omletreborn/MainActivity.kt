@@ -293,6 +293,8 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                     } else {
                         rooms = snapshot?.documents?.mapNotNull { doc ->
                             val data = doc.data ?: return@mapNotNull null
+                            val heartbeat = data["lastHeartbeat"] as? com.google.firebase.Timestamp
+                            if (heartbeat == null || System.currentTimeMillis() - heartbeat.toDate().time > 45000L) return@mapNotNull null
                             GameRoom(
                                 doc.id,
                                 data["name"] as? String ?: "Phòng chưa đặt tên",
@@ -302,7 +304,7 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                                 data["hostUid"] as? String ?: "",
                                 data["hostEmail"] as? String ?: "Người chơi",
                                 (data["maxPlayers"] as? Number)?.toLong() ?: 8L,
-                                (data["members"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                                (data["members"] as? List<*>)?.filterIsInstance<String>()?.distinct() ?: emptyList()
                             )
                         } ?: emptyList()
                         loading = false
@@ -455,6 +457,7 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                                 "maxPlayers" to (maxPlayers.toLongOrNull() ?: 8L),
                                 "members" to listOf(uid),
                                 "status" to "open",
+                                "lastHeartbeat" to FieldValue.serverTimestamp(),
                                 "createdAt" to FieldValue.serverTimestamp()
                             )
                             val roomRef = db.collection("rooms").document()
