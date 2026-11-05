@@ -22,8 +22,9 @@ service cloud.firestore {
           && request.resource.data.status == 'closed')
         ||
         (resource.data.hostUid == request.auth.uid
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastHeartbeat'])
-          && request.resource.data.lastHeartbeat is timestamp)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastHeartbeat', 'isLive'])
+          && request.resource.data.lastHeartbeat is timestamp
+          && request.resource.data.isLive is bool)
         ||
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
           && request.resource.data.status == resource.data.status
