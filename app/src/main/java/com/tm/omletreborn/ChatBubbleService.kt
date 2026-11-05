@@ -34,7 +34,7 @@ class ChatBubbleService : Service() {
         override fun run() {
             val uid = FirebaseAuth.getInstance().currentUser?.uid
             if (uid != null) {
-                FirebaseFirestore.getInstance().collection("rooms").whereEqualTo("hostUid", uid).whereEqualTo("status", "open").get()
+                FirebaseFirestore.getInstance().collection("rooms").whereEqualTo("hostUid", uid).whereEqualTo("status", "open").whereEqualTo("isLive", true).get()
                     .addOnSuccessListener { snapshot -> snapshot.documents.forEach { doc ->
                         doc.reference.update("lastHeartbeat", com.google.firebase.firestore.FieldValue.serverTimestamp())
                     } }
@@ -134,12 +134,13 @@ class ChatBubbleService : Service() {
             val box=roomList ?: return@addSnapshotListener
             box.removeAllViews()
             if(err!=null) { status?.text="Không tải được phòng. Kiểm tra Firestore Rules."; return@addSnapshotListener }
-            val docs=snap?.documents.orEmpty().filter { d ->
+            val all=snap?.documents.orEmpty()
+            val own=all.filter { it.getString("hostUid")==uid }
+            val docs=all.filter { d ->
                 val heartbeat=d.getTimestamp("lastHeartbeat")
-                heartbeat != null && System.currentTimeMillis()-heartbeat.toDate().time <= 45000L
+                d.getBoolean("isLive")==true && heartbeat != null && System.currentTimeMillis()-heartbeat.toDate().time <= 45000L
             }
-            val own=docs.filter { it.getString("hostUid")==uid }
-            status?.text=if(own.isNotEmpty()) "MAP CỦA BẠN • ${own.size} map online" else "MAP ĐANG ONLINE • ${docs.size}"
+            status?.text=if(own.isNotEmpty()) "MAP CỦA BẠN • ${own.count { it.getBoolean("isLive")==true }} map đang mở" else "MAP ĐANG ONLINE • ${docs.size}"
             val shown=if(own.isNotEmpty()) own else docs
             if(shown.isEmpty()) box.addView(label("Chưa có map thật nào đang mở."))
             shown.forEach { d ->
@@ -150,7 +151,20 @@ class ChatBubbleService : Service() {
                     orientation=LinearLayout.VERTICAL; setPadding(dp(9),dp(7),dp(9),dp(7))
                     background=GradientDrawable().apply { setColor(Color.rgb(16,34,55)); cornerRadius=dp(8).toFloat() }
                     addView(label(n + if(d.getString("hostUid")==uid) " • CHỦ MAP" else ""))
-                    addView(label("● ONLINE     Người chơi: $count/$max"))
+                    val live=d.getBoolean("isLive")==true && d.getTimestamp("lastHeartbeat")?.let { System.currentTimeMillis()-it.toDate().time <= 45000L }==true
+                    addView(label((if(live) "● ONLINE" else "○ CHƯA MỞ MAP") + "     Người chơi: $count/$max"))
+                    if(d.getString("hostUid")==uid) {
+                        val toggle=TextView(this@ChatBubbleService).apply {
+                            text=if(live) "TẮT MAP" else "BẬT MAP (khi đã vào thế giới)"
+                            gravity=Gravity.CENTER; setTextColor(Color.WHITE); setPadding(dp(8),dp(8),dp(8),dp(8))
+                            background=GradientDrawable().apply { setColor(if(live) Color.rgb(145,55,55) else Color.rgb(20,120,90)); cornerRadius=dp(7).toFloat() }
+                            setOnClickListener {
+                                d.reference.update(mapOf("isLive" to !live, "lastHeartbeat" to com.google.firebase.firestore.FieldValue.serverTimestamp()))
+                                    .addOnFailureListener { status?.text="Không đổi được trạng thái map. Kiểm tra Firestore Rules." }
+                            }
+                        }
+                        row.addView(toggle)
+                    }
                     setOnClickListener { selectedRoom=d.id; listenMessages(d.id) }
                 }
                 box.addView(row,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(6) })
