@@ -537,18 +537,24 @@ private fun AuthPage(
     message: String, authReady: Boolean, onMessage: (String) -> Unit,
     onAuthenticated: (String) -> Unit
 ) {
-    var step by remember { mutableStateOf("login") }
-    var code by remember { mutableStateOf("") }
+    var registering by remember { mutableStateOf(false) }
     var username by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
-    var verificationToken by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    val functions = remember { com.google.firebase.functions.FirebaseFunctions.getInstance("asia-southeast1") }
     val auth = remember { FirebaseAuth.getInstance() }
+    val db = remember { FirebaseFirestore.getInstance() }
 
     fun showError(error: Exception?) {
-        val callable = error as? com.google.firebase.functions.FirebaseFunctionsException
-        onMessage(callable?.message ?: error?.localizedMessage ?: "Có lỗi xảy ra. Hãy thử lại.")
+        val code = (error as? com.google.firebase.auth.FirebaseAuthException)?.errorCode.orEmpty()
+        onMessage(when {
+            code.contains("WEAK_PASSWORD") -> "Mật khẩu cần ít nhất 6 ký tự."
+            code.contains("EMAIL_ALREADY_IN_USE") -> "Tên đăng nhập này đã được sử dụng."
+            code.contains("INVALID_LOGIN_CREDENTIALS") || code.contains("USER_NOT_FOUND") ->
+                "Tên đăng nhập hoặc mật khẩu không chính xác."
+            code.contains("NETWORK") -> "Không có kết nối mạng. Hãy thử lại."
+            code.contains("OPERATION_NOT_ALLOWED") -> "Firebase chưa bật Email/Password trong Authentication."
+            else -> error?.localizedMessage ?: "Có lỗi xảy ra. Hãy thử lại."
+        })
         busy = false
     }
 
@@ -557,148 +563,127 @@ private fun AuthPage(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            when(step) {
-                "email" -> "Đăng ký • Email"
-                "code" -> "Xác minh email"
-                "details" -> "Hoàn tất tài khoản"
-                else -> "Chào mừng trở lại"
-            },
+            if (registering) "Tạo tài khoản Omlet" else "Chào mừng trở lại",
             color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            when(step) {
-                "email" -> "Nhập email để nhận mã xác minh 6 chữ số."
-                "code" -> "Nhập mã được gửi tới $email."
-                "details" -> "Email đã xác minh. Tạo thông tin tài khoản của bạn."
-                else -> "Đăng nhập để tiếp tục với Omlet Reborn."
-            },
+            if (registering) "Chỉ cần tên đăng nhập và mật khẩu. Không cần email hay mã OTP."
+            else "Đăng nhập bằng tên người dùng của bạn.",
             color = Muted
         )
         Spacer(Modifier.height(22.dp))
-
-        if (step == "login" || step == "email") {
-            OutlinedTextField(
-                value = email, onValueChange = onEmail, modifier = Modifier.fillMaxWidth(),
-                label = { Text("Địa chỉ email") }, singleLine = true,
-                enabled = !busy
-            )
-        }
-        if (step == "login") {
+        OutlinedTextField(
+            value = if (registering) username else email,
+            onValueChange = { value ->
+                if (registering) username = value.filter { it.isLetterOrDigit() || it == '_' || it == '.' || it == '-' }.take(20)
+                else onEmail(value.filterNot(Char::isWhitespace).take(20))
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Tên đăng nhập (3–20 ký tự)") },
+            singleLine = true, enabled = !busy
+        )
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = password, onValueChange = onPassword,
+            modifier = Modifier.fillMaxWidth(), label = { Text("Mật khẩu") },
+            singleLine = true, visualTransformation = PasswordVisualTransformation(), enabled = !busy
+        )
+        if (registering) {
             Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = password, onValueChange = onPassword, modifier = Modifier.fillMaxWidth(),
-                label = { Text("Mật khẩu") }, singleLine = true,
-                visualTransformation = PasswordVisualTransformation(), enabled = !busy
-            )
-            Spacer(Modifier.height(18.dp))
-            Button(
-                onClick = {
-                    busy = true; onMessage("")
-                    auth.signInWithEmailAndPassword(email.trim(), password)
-                        .addOnSuccessListener { busy = false; onAuthenticated(email.trim()) }
-                        .addOnFailureListener { showError(it) }
-                },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                enabled = !busy && authReady && email.contains("@") && password.isNotBlank()
-            ) { Text(if (busy) "Đang đăng nhập..." else "Đăng nhập") }
-            TextButton(onClick = { step = "email"; onMessage("") }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                Text("Chưa có tài khoản? Đăng ký")
-            }
-        } else if (step == "email") {
-            Spacer(Modifier.height(18.dp))
-            Button(
-                onClick = {
-                    busy = true; onMessage("")
-                    functions.getHttpsCallable("requestEmailOtp").call(mapOf("email" to email.trim()))
-                        .addOnSuccessListener {
-                            busy = false; step = "code"
-                            onMessage("Đã gửi mã. Mã có hiệu lực trong 10 phút.")
-                        }
-                        .addOnFailureListener { showError(it) }
-                },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                enabled = !busy && authReady && email.contains("@")
-            ) { Text(if (busy) "Đang gửi mã..." else "Gửi mã xác minh") }
-            TextButton(onClick = { step = "login"; onMessage("") }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                Text("Quay lại đăng nhập")
-            }
-        } else if (step == "code") {
-            OutlinedTextField(
-                value = code, onValueChange = { code = it.filter(Char::isDigit).take(6) },
-                modifier = Modifier.fillMaxWidth(), label = { Text("Mã xác minh 6 chữ số") },
-                singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                enabled = !busy
-            )
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = {
-                    busy = true; onMessage("")
-                    functions.getHttpsCallable("verifyEmailOtp").call(mapOf("email" to email.trim(), "code" to code))
-                        .addOnSuccessListener { result ->
-                            @Suppress("UNCHECKED_CAST")
-                            val data = result.data as? Map<String, Any>
-                            verificationToken = data?.get("verificationToken") as? String ?: ""
-                            busy = false
-                            if (verificationToken.isNotBlank()) { step = "details"; onMessage("Email đã xác minh thành công.") }
-                            else onMessage("Không nhận được phiên xác minh. Hãy gửi mã mới.")
-                        }
-                        .addOnFailureListener { showError(it) }
-                },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                enabled = !busy && code.length == 6
-            ) { Text(if (busy) "Đang xác minh..." else "Xác minh mã") }
-            TextButton(
-                onClick = {
-                    busy = true; onMessage("")
-                    functions.getHttpsCallable("requestEmailOtp").call(mapOf("email" to email.trim()))
-                        .addOnSuccessListener { busy = false; code = ""; onMessage("Đã gửi mã mới. Kiểm tra email.") }
-                        .addOnFailureListener { showError(it) }
-                },
-                enabled = !busy, modifier = Modifier.align(Alignment.CenterHorizontally)
-            ) { Text("Gửi lại mã") }
-        } else {
-            OutlinedTextField(
-                value = username, onValueChange = { username = it.take(24) },
-                modifier = Modifier.fillMaxWidth(), label = { Text("Username (3–24 ký tự)") },
-                singleLine = true, enabled = !busy
-            )
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = password, onValueChange = onPassword,
-                modifier = Modifier.fillMaxWidth(), label = { Text("Mật khẩu (ít nhất 8 ký tự)") },
-                singleLine = true, visualTransformation = PasswordVisualTransformation(), enabled = !busy
-            )
-            Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = confirmPassword, onValueChange = { confirmPassword = it },
-                modifier = Modifier.fillMaxWidth(), label = { Text("Xác nhận mật khẩu") },
+                modifier = Modifier.fillMaxWidth(), label = { Text("Nhập lại mật khẩu") },
                 singleLine = true, visualTransformation = PasswordVisualTransformation(), enabled = !busy
             )
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = {
-                    busy = true; onMessage("")
-                    functions.getHttpsCallable("completeRegistration").call(
-                        mapOf("email" to email.trim(), "password" to password, "username" to username.trim(), "verificationToken" to verificationToken)
-                    ).addOnSuccessListener { result ->
-                        @Suppress("UNCHECKED_CAST")
-                        val data = result.data as? Map<String, Any>
-                        val token = data?.get("customToken") as? String
-                        if (token.isNullOrBlank()) { busy = false; onMessage("Máy chủ không trả về token đăng nhập.") }
-                        else auth.signInWithCustomToken(token)
-                            .addOnSuccessListener { busy = false; onAuthenticated(email.trim()) }
-                            .addOnFailureListener { showError(it) }
-                    }.addOnFailureListener { showError(it) }
-                },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                enabled = !busy && username.trim().length >= 3 && password.length >= 8 && password == confirmPassword
-            ) { Text(if (busy) "Đang tạo tài khoản..." else "Tạo tài khoản") }
         }
-
+        Spacer(Modifier.height(18.dp))
+        Button(
+            onClick = {
+                busy = true
+                onMessage("")
+                val chosenName = (if (registering) username else email).trim()
+                val key = chosenName.lowercase()
+                val authEmail = "$key@accounts.omletreborn.invalid"
+                if (registering) {
+                    val credential = auth.createUserWithEmailAndPassword(authEmail, password)
+                    credential.addOnSuccessListener { result ->
+                        val uid = result.user?.uid
+                        if (uid == null) {
+                            busy = false
+                            onMessage("Không tạo được tài khoản. Hãy thử lại.")
+                        } else {
+                            val usernameRef = db.collection("usernames").document(key)
+                            val userRef = db.collection("users").document(uid)
+                            db.runTransaction { transaction ->
+                                val existing = transaction.get(usernameRef)
+                                if (existing.exists()) throw IllegalStateException("Tên đăng nhập này đã được sử dụng.")
+                                transaction.set(usernameRef, mapOf(
+                                    "uid" to uid,
+                                    "authEmail" to authEmail,
+                                    "username" to chosenName,
+                                    "createdAt" to FieldValue.serverTimestamp()
+                                ))
+                                transaction.set(userRef, mapOf(
+                                    "uid" to uid,
+                                    "username" to chosenName,
+                                    "createdAt" to FieldValue.serverTimestamp()
+                                ))
+                            }.addOnSuccessListener {
+                                busy = false
+                                onAuthenticated(chosenName)
+                            }.addOnFailureListener { failure ->
+                                auth.currentUser?.delete()?.addOnCompleteListener {
+                                    busy = false
+                                    onMessage(failure.localizedMessage ?: "Không thể lưu tên đăng nhập. Hãy thử tên khác.")
+                                }
+                            }
+                        }
+                    }.addOnFailureListener { showError(it) }
+                } else {
+                    db.collection("usernames").document(key).get()
+                        .addOnSuccessListener { document ->
+                            val savedAuthEmail = document.getString("authEmail")
+                            if (savedAuthEmail.isNullOrBlank()) {
+                                busy = false
+                                onMessage("Không tìm thấy tên đăng nhập. Nếu đây là tài khoản cũ, tài khoản cần được chuyển đổi.")
+                            } else {
+                                auth.signInWithEmailAndPassword(savedAuthEmail, password)
+                                    .addOnSuccessListener {
+                                        busy = false
+                                        onAuthenticated(document.getString("username") ?: chosenName)
+                                    }
+                                    .addOnFailureListener { showError(it) }
+                            }
+                        }
+                        .addOnFailureListener { failure ->
+                            busy = false
+                            onMessage(failure.localizedMessage ?: "Không tìm thấy tài khoản hoặc không thể kết nối.")
+                        }
+                }
+            },
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            enabled = !busy && authReady &&
+                (if (registering) username.length in 3..20 && password.length >= 6 && password == confirmPassword
+                 else email.length in 3..20 && password.isNotBlank())
+        ) {
+            Text(if (busy) "Đang xử lý..." else if (registering) "Tạo tài khoản" else "Đăng nhập")
+        }
+        TextButton(
+            onClick = {
+                registering = !registering
+                onMessage("")
+                onPassword("")
+                confirmPassword = ""
+            },
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+            enabled = !busy
+        ) {
+            Text(if (registering) "Đã có tài khoản? Đăng nhập" else "Chưa có tài khoản? Đăng ký")
+        }
         if (message.isNotBlank()) {
             Spacer(Modifier.height(12.dp))
-            Text(message, color = if (message.contains("thành công") || message.contains("Đã gửi")) Cyan else Color(0xFFFF8A80), fontSize = 12.sp)
+            Text(message, color = if (message.contains("thành công")) Cyan else Color(0xFFFF8A80), fontSize = 12.sp)
         }
         if (!authReady) {
             Spacer(Modifier.height(8.dp))
