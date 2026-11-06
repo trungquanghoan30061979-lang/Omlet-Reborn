@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "367813803452",
+    "project_id": "omlet-reborn-7adaa",
+    "storage_bucket": "omlet-reborn-7adaa.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:367813803452:android:94edfae33fd50ce0927fb9",
+        "android_client_info": {
+          "package_name": "com.tm.omletreborn"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBJSiToBto-Se6a_YSreSBpT0XqEd_yiDU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
