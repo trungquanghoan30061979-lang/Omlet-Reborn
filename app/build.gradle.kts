@@ -38,6 +38,5 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.9")
     implementation("com.google.firebase:firebase-auth:23.2.0")
     implementation("com.google.firebase:firebase-firestore:25.1.4")
-    implementation("com.google.firebase:firebase-functions:21.1.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
