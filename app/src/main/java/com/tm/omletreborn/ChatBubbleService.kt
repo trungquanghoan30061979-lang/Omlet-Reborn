@@ -265,27 +265,55 @@ class ChatBubbleService : Service() {
                 val n=d.getString("name") ?: "Map Minecraft"
                 val count=(d.get("members") as? List<*>)?.filterIsInstance<String>()?.distinct()?.size ?: 1
                 val max=d.getLong("maxPlayers") ?: 8L
-                val row=LinearLayout(this).apply {
-                    orientation=LinearLayout.VERTICAL; setPadding(dp(9),dp(7),dp(9),dp(7))
-                    background=GradientDrawable().apply { setColor(Color.rgb(16,34,55)); cornerRadius=dp(8).toFloat() }
-                    addView(label(n + if(d.getString("hostUid")==uid) " • CHỦ MAP" else ""))
-                    val live=d.getBoolean("isLive")==true && d.getTimestamp("lastHeartbeat")?.let { System.currentTimeMillis()-it.toDate().time <= 45000L }==true
-                    addView(label((if(live) "● ONLINE" else "○ CHƯA MỞ MAP") + "     Người chơi: $count/$max"))
-                    if(d.getString("hostUid")==uid) {
-                        val toggle=TextView(this@ChatBubbleService).apply {
-                            text=if(live) "TẮT MAP" else "BẬT MAP (khi đã vào thế giới)"
-                            gravity=Gravity.CENTER; setTextColor(Color.WHITE); setPadding(dp(8),dp(8),dp(8),dp(8))
-                            background=GradientDrawable().apply { setColor(if(live) Color.rgb(145,55,55) else Color.rgb(20,120,90)); cornerRadius=dp(7).toFloat() }
-                            setOnClickListener {
-                                d.reference.update(mapOf("isLive" to !live, "lastHeartbeat" to com.google.firebase.firestore.FieldValue.serverTimestamp()))
-                                    .addOnFailureListener { status?.text="Không đổi được trạng thái map. Kiểm tra Firestore Rules." }
-                            }
-                        }
-                        addView(toggle)
-                    }
-                    setOnClickListener { selectedRoom=d.id; listenMessages(d.id) }
+                val live=d.getBoolean("isLive")==true && d.getTimestamp("lastHeartbeat")?.let { System.currentTimeMillis()-it.toDate().time <= 45000L }==true
+                val card=LinearLayout(this).apply {
+                    orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL
+                    setPadding(dp(9),dp(9),dp(9),dp(9))
+                    background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                        intArrayOf(Color.rgb(5,8,15),Color.rgb(55,60,68))).apply { cornerRadius=dp(13).toFloat() }
                 }
-                box.addView(row,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(6) })
+                val mark=TextView(this).apply {
+                    text=n.take(1).uppercase(); textSize=22f; gravity=Gravity.CENTER
+                    typeface=Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE)
+                    background=GradientDrawable().apply {
+                        setColor(if(live) Color.rgb(45,170,75) else Color.rgb(25,90,205))
+                        cornerRadius=dp(11).toFloat()
+                    }
+                }
+                card.addView(mark,LinearLayout.LayoutParams(dp(48),dp(54)))
+                val details=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(9),0,0,0) }
+                details.addView(TextView(this).apply {
+                    text=n.uppercase(); textSize=15f; typeface=Typeface.DEFAULT_BOLD
+                    setTextColor(Color.WHITE)
+                })
+                details.addView(label("NGƯỜI CHƠI: $count/$max  •  "+(d.getString("version") ?: "Minecraft PE")))
+                details.addView(TextView(this).apply {
+                    text=if(live) "● ĐANG MỞ" else "● CHƯA MỞ"
+                    textSize=10f; setTextColor(if(live) Color.rgb(100,225,110) else Color.LTGRAY)
+                })
+                card.addView(details,LinearLayout.LayoutParams(0,-2,1f))
+                if(d.getString("hostUid")==uid) {
+                    val toggle=TextView(this@ChatBubbleService).apply {
+                        text=if(live) "TẮT MAP" else "BẬT MAP"
+                        textSize=10f; gravity=Gravity.CENTER; typeface=Typeface.DEFAULT_BOLD
+                        setTextColor(Color.WHITE); setPadding(dp(8),dp(10),dp(8),dp(10))
+                        background=GradientDrawable().apply {
+                            setColor(if(live) Color.rgb(155,45,45) else Color.rgb(25,125,75))
+                            cornerRadius=dp(8).toFloat()
+                        }
+                        setOnClickListener {
+                            d.reference.update(mapOf("isLive" to !live, "lastHeartbeat" to com.google.firebase.firestore.FieldValue.serverTimestamp()))
+                                .addOnFailureListener { status?.text="Không đổi được trạng thái map. Kiểm tra Firestore Rules." }
+                        }
+                    }
+                    card.addView(toggle,LinearLayout.LayoutParams(dp(70),dp(42)))
+                }
+                card.setOnClickListener {
+                    selectedRoom=d.id
+                    listenMessages(d.id)
+                    status?.text="Đã chọn map: $n • Mở tab CHAT để nhắn tin"
+                }
+                box.addView(card,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
             }
         }
     }
