@@ -296,7 +296,7 @@ private fun ChatPage(signedIn: Boolean, onLogin: () -> Unit) {
                             val edge=db.collection("friendships").document(ids.joinToString("_"))
                             val request=db.collection("friendRequests").document(uid).collection("incoming").document(person.uid)
                             db.runBatch { batch ->
-                                batch.set(edge,mapOf("memberUids" to ids,"memberNames" to mapOf(uid to myName,person.uid to person.username),"createdAt" to FieldValue.serverTimestamp()))
+                                batch.set(edge,mapOf("memberUids" to ids,"memberNames" to mapOf(uid to myName,person.uid to person.username),"senderUid" to person.uid,"recipientUid" to uid,"createdAt" to FieldValue.serverTimestamp()))
                                 batch.delete(request)
                             }.addOnFailureListener { info="Không chấp nhận được lời mời. Kiểm tra Rules." }
                         }) { Text("Chấp nhận") }
