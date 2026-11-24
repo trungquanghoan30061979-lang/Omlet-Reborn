@@ -212,12 +212,31 @@ class ChatBubbleService : Service() {
         chatPage.addView(send)
         chatPage.addView(label("Chat riêng sẽ được bổ sung ở bước tiếp theo."))
 
-        mapPage.addView(label("MAP CỦA BẠN"))
-        mapPage.addView(label("Chọn map bên dưới để xem thông tin và bật hoặc tắt trạng thái online."))
+        mapPage.addView(label("QUẢN LÝ THẾ GIỚI CỦA BẠN"))
+        mapPage.addView(label("Map do bạn tạo sẽ hiện ở tab THẾ GIỚI. Chọn map để xem chat và trạng thái."))
+        val createMapButton=TextView(this).apply {
+            text="＋  MỞ OMLET REBORN ĐỂ TẠO / SỬA MAP"
+            textSize=12f; gravity=Gravity.CENTER; typeface=Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE); setPadding(dp(10),dp(15),dp(10),dp(15))
+            background=GradientDrawable().apply { setColor(Color.rgb(24,75,190)); cornerRadius=dp(11).toFloat() }
+            setOnClickListener {
+                val launch=packageManager.getLaunchIntentForPackage(packageName)
+                if(launch!=null) {
+                    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    startActivity(launch)
+                } else {
+                    status?.text="Không mở được Omlet Reborn."
+                }
+            }
+        }
+        mapPage.addView(createMapButton)
         val mapScroll=ScrollView(this)
         val mapHint=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
-        mapHint.addView(label("Tạo map mới và chỉnh sửa tên, phiên bản, mô tả trong ứng dụng Omlet Reborn."))
-        mapHint.addView(label("Các nút BẬT MAP / TẮT MAP xuất hiện trong thẻ map do bạn sở hữu."))
+        mapHint.addView(label("HƯỚNG DẪN"))
+        mapHint.addView(label("1. Mở Omlet Reborn và vào Phòng chơi."))
+        mapHint.addView(label("2. Chọn Tạo phòng, nhập tên map, phiên bản và số người."))
+        mapHint.addView(label("3. Vào Minecraft, sau đó bật trạng thái map trong bảng nổi."))
+        mapHint.addView(label("4. Người chơi chỉ thấy map khi chủ map đang bật online."))
         mapScroll.addView(mapHint)
         mapPage.addView(mapScroll,LinearLayout.LayoutParams(-1,0,1f))
 
