@@ -113,6 +113,7 @@ fun OmletApp() {
                             }
                         )
                         "rooms" -> RoomsPage(signedIn, userEmail, { page = "login" })
+                        "chat" -> ChatPage(signedIn, { page = "login" })
                         "profile" -> ProfilePage(signedIn, userEmail, authReady,
                             { page = "login" }, {
                                 if (authReady) FirebaseAuth.getInstance().signOut()
@@ -124,7 +125,7 @@ fun OmletApp() {
                     }
                 }
                 NavigationBar(containerColor = Navy, contentColor = Color.White) {
-                    listOf("home", "rooms", "profile").forEach { item ->
+                    listOf("home", "rooms", "chat", "profile").forEach { item ->
                         NavigationBarItem(
                             selected = page == item || (page == "login" && item == "profile"),
                             onClick = { page = item },
@@ -132,12 +133,14 @@ fun OmletApp() {
                                 Icon(when (item) {
                                     "home" -> Icons.Default.Home
                                     "rooms" -> Icons.Default.Groups
+                                    "chat" -> Icons.Default.Chat
                                     else -> Icons.Default.Person
                                 }, null)
                             },
                             label = { Text(when (item) {
                                 "home" -> "Trang chủ"
                                 "rooms" -> "Phòng chơi"
+                                "chat" -> "Chat"
                                 else -> "Tài khoản"
                             }) },
                             colors = NavigationBarItemDefaults.colors(
@@ -197,6 +200,147 @@ private fun HomePage(onExplore: () -> Unit) {
         item { Text("Khám phá Omlet", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold) }
         item { FeatureCard(Icons.Default.Groups, "Phòng chơi", "Tìm người chơi và lập nhóm Minecraft PE.", Blue) }
         item { FeatureCard(Icons.Default.Videocam, "Khoảnh khắc & phát trực tiếp", "Không gian chia sẻ video đang được phát triển.", Color(0xFF8057E8)) }
+    }
+}
+
+private data class ChatFriend(val uid: String, val username: String)
+
+@Composable
+private fun ChatPage(signedIn: Boolean, onLogin: () -> Unit) {
+    val db = remember { FirebaseFirestore.getInstance() }
+    val me = FirebaseAuth.getInstance().currentUser
+    val uid = me?.uid.orEmpty()
+    val myName = me?.email?.substringBefore("@").orEmpty()
+    var query by remember { mutableStateOf("") }
+    var result by remember { mutableStateOf<ChatFriend?>(null) }
+    var friends by remember { mutableStateOf<List<ChatFriend>>(emptyList()) }
+    var requests by remember { mutableStateOf<List<ChatFriend>>(emptyList()) }
+    var selected by remember { mutableStateOf<ChatFriend?>(null) }
+    var messages by remember { mutableStateOf<List<String>>(emptyList()) }
+    var draft by remember { mutableStateOf("") }
+    var info by remember { mutableStateOf("") }
+
+    DisposableEffect(uid) {
+        if (!signedIn || uid.isBlank()) { onDispose { } }
+        else {
+            val a = db.collection("friendships").whereArrayContains("memberUids", uid).addSnapshotListener { snap, _ ->
+                friends = snap?.documents?.mapNotNull { doc ->
+                    val ids = (doc.get("memberUids") as? List<*>)?.filterIsInstance<String>() ?: return@mapNotNull null
+                    val other = ids.firstOrNull { it != uid } ?: return@mapNotNull null
+                    val names = doc.get("memberNames") as? Map<*, *>
+                    ChatFriend(other, names?.get(other) as? String ?: "Người chơi")
+                } ?: emptyList()
+            }
+            val b = db.collection("friendRequests").document(uid).collection("incoming").addSnapshotListener { snap, _ ->
+                requests = snap?.documents?.map { ChatFriend(it.id, it.getString("senderName") ?: "Người chơi") } ?: emptyList()
+            }
+            onDispose { a.remove(); b.remove() }
+        }
+    }
+
+    DisposableEffect(selected?.uid) {
+        val target = selected
+        if (target == null) { messages = emptyList(); onDispose { } }
+        else {
+            val cid = listOf(uid, target.uid).sorted().joinToString("_")
+            val reg = db.collection("conversations").document(cid).collection("messages").orderBy("createdAt").limit(100)
+                .addSnapshotListener { snap, _ ->
+                    messages = snap?.documents?.map { (it.getString("senderName") ?: "Người chơi") + ": " + (it.getString("text") ?: "") } ?: emptyList()
+                }
+            onDispose { reg.remove() }
+        }
+    }
+
+    Column(Modifier.fillMaxSize().background(PageBg).padding(16.dp)) {
+        if (!signedIn) {
+            Text("Chat", color=Color.White, fontSize=26.sp, fontWeight=FontWeight.Bold)
+            FeatureCard(Icons.Default.Lock, "Đăng nhập để dùng Chat", "Đăng nhập để tìm và kết bạn.", Blue)
+            Button(onClick=onLogin, modifier=Modifier.fillMaxWidth()) { Text("Đăng nhập / Đăng ký") }
+        } else if (selected == null) {
+            Text("Chat", color=Color.White, fontSize=26.sp, fontWeight=FontWeight.ExtraBold)
+            Text("Tìm người chơi, kết bạn và nhắn tin riêng.", color=Muted, fontSize=12.sp)
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment=Alignment.CenterVertically) {
+                OutlinedTextField(value=query, onValueChange={ query=it.filter { ch -> ch.isLetterOrDigit() || ch=='_' || ch=='.' || ch=='-' }.take(20); result=null }, modifier=Modifier.weight(1f), singleLine=true, label={ Text("Tìm tên người dùng") })
+                Spacer(Modifier.width(8.dp))
+                Button(enabled=query.length>=3, onClick={
+                    db.collection("usernames").document(query.lowercase()).get().addOnSuccessListener { doc ->
+                        val other=doc.getString("uid")
+                        if(other.isNullOrBlank()) info="Không tìm thấy tài khoản."
+                        else if(other==uid) info="Đây là tài khoản của bạn."
+                        else if(friends.any { it.uid==other }) info="Hai bạn đã là bạn bè."
+                        else result=ChatFriend(other,doc.getString("username") ?: query)
+                    }.addOnFailureListener { info="Không tìm kiếm được. Kiểm tra kết nối." }
+                }) { Icon(Icons.Default.Search,null) }
+            }
+            result?.let { person ->
+                Row(Modifier.fillMaxWidth().padding(top=8.dp).background(Panel,RoundedCornerShape(12.dp)).padding(10.dp), verticalAlignment=Alignment.CenterVertically) {
+                    Text(person.username,Modifier.weight(1f),color=Color.White,fontWeight=FontWeight.Bold)
+                    Button(onClick={
+                        db.collection("friendRequests").document(person.uid).collection("incoming").document(uid)
+                            .set(mapOf("senderUid" to uid,"senderName" to myName,"recipientUid" to person.uid,"createdAt" to FieldValue.serverTimestamp()))
+                            .addOnSuccessListener { info="Đã gửi lời mời kết bạn."; result=null }
+                            .addOnFailureListener { info="Không gửi được lời mời kết bạn." }
+                    }) { Text("Kết bạn") }
+                }
+            }
+            if(info.isNotBlank()) Text(info,color=Cyan,fontSize=12.sp,modifier=Modifier.padding(top=6.dp))
+            Spacer(Modifier.height(10.dp))
+            if(requests.isNotEmpty()) {
+                Text("LỜI MỜI KẾT BẠN",color=Cyan,fontWeight=FontWeight.Bold,fontSize=12.sp)
+                requests.forEach { person ->
+                    Row(Modifier.fillMaxWidth().padding(vertical=3.dp).background(Panel,RoundedCornerShape(10.dp)).padding(8.dp),verticalAlignment=Alignment.CenterVertically) {
+                        Text(person.username,Modifier.weight(1f),color=Color.White)
+                        TextButton(onClick={
+                            val ids=listOf(uid,person.uid).sorted()
+                            val edge=db.collection("friendships").document(ids.joinToString("_"))
+                            val request=db.collection("friendRequests").document(uid).collection("incoming").document(person.uid)
+                            db.runBatch { batch ->
+                                batch.set(edge,mapOf("memberUids" to ids,"memberNames" to mapOf(uid to myName,person.uid to person.username),"createdAt" to FieldValue.serverTimestamp()))
+                                batch.delete(request)
+                            }.addOnFailureListener { info="Không chấp nhận được lời mời. Kiểm tra Rules." }
+                        }) { Text("Chấp nhận") }
+                        TextButton(onClick={ db.collection("friendRequests").document(uid).collection("incoming").document(person.uid).delete() }) { Text("Từ chối") }
+                    }
+                }
+            }
+            Text("BẠN BÈ",color=Cyan,fontWeight=FontWeight.Bold,fontSize=12.sp)
+            if(friends.isEmpty()) Text("Chưa có bạn bè. Hãy tìm tên người dùng để kết bạn.",color=Muted,fontSize=12.sp)
+            LazyColumn(verticalArrangement=Arrangement.spacedBy(7.dp)) {
+                items(friends.size) { i ->
+                    val person=friends[i]
+                    Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(12.dp)).padding(12.dp),verticalAlignment=Alignment.CenterVertically) {
+                        Icon(Icons.Default.AccountCircle,null,tint=Cyan)
+                        Spacer(Modifier.width(10.dp))
+                        Text(person.username,Modifier.weight(1f),color=Color.White,fontWeight=FontWeight.Bold)
+                        TextButton(onClick={ selected=person }) { Text("Chat") }
+                    }
+                }
+            }
+        } else {
+            val person=selected!!
+            Row(verticalAlignment=Alignment.CenterVertically) {
+                IconButton(onClick={selected=null}) { Icon(Icons.Default.ArrowBack,null,tint=Color.White) }
+                Text(person.username,color=Color.White,fontSize=18.sp,fontWeight=FontWeight.Bold)
+            }
+            LazyColumn(Modifier.weight(1f).fillMaxWidth().background(Panel,RoundedCornerShape(12.dp)).padding(10.dp)) {
+                items(messages.size) { i -> Text(messages[i],color=Color.White,fontSize=13.sp) }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment=Alignment.CenterVertically) {
+                OutlinedTextField(value=draft,onValueChange={draft=it.take(300)},modifier=Modifier.weight(1f),singleLine=true,label={Text("Tin nhắn")})
+                Spacer(Modifier.width(8.dp))
+                Button(enabled=draft.isNotBlank(),onClick={
+                    val cid=listOf(uid,person.uid).sorted().joinToString("_")
+                    val convo=db.collection("conversations").document(cid)
+                    val ids=listOf(uid,person.uid).sorted()
+                    convo.set(mapOf("memberUids" to ids,"memberNames" to mapOf(uid to myName,person.uid to person.username)),com.google.firebase.firestore.SetOptions.merge())
+                        .continueWithTask { convo.collection("messages").add(mapOf("senderUid" to uid,"senderName" to myName,"text" to draft.trim(),"createdAt" to FieldValue.serverTimestamp())) }
+                        .addOnSuccessListener { draft="" }
+                        .addOnFailureListener { info="Không gửi được tin nhắn. Kiểm tra Rules." }
+                }) { Icon(Icons.Default.Send,null) }
+            }
+        }
     }
 }
 
