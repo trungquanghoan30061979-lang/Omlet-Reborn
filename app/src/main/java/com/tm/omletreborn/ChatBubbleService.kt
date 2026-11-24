@@ -101,10 +101,10 @@ class ChatBubbleService : Service() {
         val wide=screenW>screenH
         val root=LinearLayout(this).apply {
             orientation=if(wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
-            setPadding(dp(10),dp(10),dp(10),dp(10))
+            setPadding(dp(8),dp(8),dp(8),dp(8))
             background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 intArrayOf(Color.rgb(4,7,18),Color.rgb(25,35,105),Color.rgb(49,58,170))).apply {
-                cornerRadius=dp(20).toFloat()
+                cornerRadius=0f
                 setStroke(dp(2),Color.rgb(52,105,220))
             }
         }
@@ -248,13 +248,13 @@ class ChatBubbleService : Service() {
             root.addView(hero,LinearLayout.LayoutParams(0,-1,0.40f))
             root.addView(right,LinearLayout.LayoutParams(0,-1,0.60f))
         } else {
-            root.addView(hero,LinearLayout.LayoutParams(-1,dp(90)))
+            root.addView(hero,LinearLayout.LayoutParams(-1,dp(72)))
             root.addView(right,LinearLayout.LayoutParams(-1,0,1f))
         }
         panel=root
         bubble?.visibility=View.GONE
-        val panelWidth=if(wide) (screenW*0.94f).toInt() else (screenW*0.94f).toInt()
-        val panelHeight=(screenH*0.82f).toInt()
+        val panelWidth=screenW
+        val panelHeight=screenH
         runCatching {
             wm.addView(root,lp(panelWidth,panelHeight,true).apply {
                 gravity=Gravity.CENTER; x=0; y=0
