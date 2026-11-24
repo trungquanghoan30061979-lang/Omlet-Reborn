@@ -96,33 +96,151 @@ class ChatBubbleService : Service() {
 
     private fun openPanel() {
         if(panel!=null) return
+        val screenW=resources.displayMetrics.widthPixels
+        val screenH=resources.displayMetrics.heightPixels
+        val wide=screenW>screenH
         val root=LinearLayout(this).apply {
-            orientation=LinearLayout.VERTICAL; setPadding(dp(13),dp(12),dp(13),dp(12))
-            background=GradientDrawable().apply { setColor(Color.rgb(5,13,27)); cornerRadius=dp(18).toFloat(); setStroke(dp(2),Color.rgb(35,145,220)) }
+            orientation=if(wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+            setPadding(dp(10),dp(10),dp(10),dp(10))
+            background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.rgb(4,7,18),Color.rgb(25,35,105),Color.rgb(49,58,170))).apply {
+                cornerRadius=dp(20).toFloat()
+                setStroke(dp(2),Color.rgb(52,105,220))
+            }
         }
-        val header=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL }
-        header.addView(TextView(this).apply { text="OMLET REBORN"; textSize=19f; typeface=Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE) },LinearLayout.LayoutParams(0,dp(42),1f))
-        header.addView(TextView(this).apply { text="×"; textSize=30f; gravity=Gravity.CENTER; setTextColor(Color.WHITE); setOnClickListener { closePanel() } },LinearLayout.LayoutParams(dp(42),dp(42)))
-        root.addView(header)
-        root.addView(TextView(this).apply {
-            text="MINECRAFT • PLAY TOGETHER"; gravity=Gravity.CENTER; textSize=15f; typeface=Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE)
-            background=GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,intArrayOf(Color.rgb(15,85,65),Color.rgb(25,130,100),Color.rgb(20,65,95))).apply { cornerRadius=dp(10).toFloat() }
-        },LinearLayout.LayoutParams(-1,dp(62)))
-        status=label("Đang tải map từ máy chủ…"); root.addView(status)
-        val rs=ScrollView(this); roomList=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }; rs.addView(roomList)
-        root.addView(rs,LinearLayout.LayoutParams(-1,dp(150)))
-        root.addView(label("TIN NHẮN CHUNG"))
-        val cs=ScrollView(this); chatList=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }; cs.addView(chatList)
-        root.addView(cs,LinearLayout.LayoutParams(-1,dp(110)))
+
+        // Banner Minecraft ở cột trái, theo bố cục trong bản thiết kế PDF.
+        val hero=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            gravity=Gravity.CENTER
+            setPadding(dp(12),dp(12),dp(12),dp(12))
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(7,15,42),Color.rgb(23,48,115),Color.rgb(12,22,48))).apply {
+                cornerRadius=dp(15).toFloat()
+            }
+            addView(TextView(this@ChatBubbleService).apply {
+                text="OMLET REBORN"; textSize=if(wide) 23f else 20f
+                typeface=Typeface.create("sans-serif-condensed",Typeface.BOLD)
+                gravity=Gravity.CENTER; setTextColor(Color.rgb(60,112,255))
+            },LinearLayout.LayoutParams(-1,dp(52)))
+            val spacer=View(this@ChatBubbleService)
+            heroSpacer@ run {
+                addView(spacer,LinearLayout.LayoutParams(1,0,1f))
+            }
+            addView(TextView(this@ChatBubbleService).apply {
+                text="MINECRAFT"; textSize=if(wide) 27f else 23f
+                typeface=Typeface.create("sans-serif-condensed",Typeface.BOLD)
+                gravity=Gravity.CENTER; setTextColor(Color.WHITE)
+            },LinearLayout.LayoutParams(-1,dp(54)))
+            addView(TextView(this@ChatBubbleService).apply {
+                text="CHƠI CÙNG BẠN BÈ"; textSize=10f
+                gravity=Gravity.CENTER; setTextColor(Color.rgb(150,205,255))
+            })
+        }
+
+        val right=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(8),dp(2),dp(2),dp(2))
+        }
+        val top=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL }
+        val title=TextView(this).apply {
+            text="CÁC THẾ GIỚI"; textSize=20f; typeface=Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE); gravity=Gravity.CENTER_VERTICAL
+        }
+        top.addView(title,LinearLayout.LayoutParams(0,dp(42),1f))
+        top.addView(TextView(this).apply {
+            text="×"; textSize=29f; gravity=Gravity.CENTER; setTextColor(Color.rgb(50,135,235))
+            background=GradientDrawable().apply { setColor(Color.rgb(210,225,245)); cornerRadius=dp(10).toFloat() }
+            setOnClickListener { closePanel() }
+        },LinearLayout.LayoutParams(dp(42),dp(42)))
+        right.addView(top)
+
+        val tabs=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER }
+        fun tabButton(caption:String, selected:Boolean, action:()->Unit):TextView = TextView(this).apply {
+            text=caption; textSize=if(wide) 12f else 11f; gravity=Gravity.CENTER
+            typeface=Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE)
+            setPadding(dp(7),dp(9),dp(7),dp(9))
+            background=GradientDrawable().apply {
+                setColor(if(selected) Color.rgb(24,75,190) else Color.rgb(10,18,42))
+                cornerRadius=dp(9).toFloat()
+                if(selected) setStroke(dp(2),Color.WHITE)
+            }
+            setOnClickListener { action() }
+        }
+        val content=FrameLayout(this)
+        val worldPage=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        val chatPage=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; visibility=View.GONE }
+        val mapPage=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; visibility=View.GONE }
+        fun selectTab(which:Int) {
+            worldPage.visibility=if(which==0) View.VISIBLE else View.GONE
+            chatPage.visibility=if(which==1) View.VISIBLE else View.GONE
+            mapPage.visibility=if(which==2) View.VISIBLE else View.GONE
+            title.text=when(which) { 1->"CHAT CHUNG"; 2->"TẠO MAP"; else->"CÁC THẾ GIỚI" }
+            tabs.removeAllViews()
+            tabs.addView(tabButton("▣  THẾ GIỚI",which==0){selectTab(0)},LinearLayout.LayoutParams(0,dp(42),1f))
+            tabs.addView(tabButton("●  CHAT",which==1){selectTab(1)},LinearLayout.LayoutParams(0,dp(42),1f))
+            tabs.addView(tabButton("▦  TẠO MAP",which==2){selectTab(2)},LinearLayout.LayoutParams(0,dp(42),1f))
+        }
+        tabs.addView(tabButton("▣  THẾ GIỚI",true){selectTab(0)},LinearLayout.LayoutParams(0,dp(42),1f))
+        tabs.addView(tabButton("●  CHAT",false){selectTab(1)},LinearLayout.LayoutParams(0,dp(42),1f))
+        tabs.addView(tabButton("▦  TẠO MAP",false){selectTab(2)},LinearLayout.LayoutParams(0,dp(42),1f))
+        right.addView(tabs)
+        status=label("Đang tải map từ máy chủ…")
+        worldPage.addView(status)
+        val rs=ScrollView(this)
+        roomList=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        rs.addView(roomList)
+        worldPage.addView(rs,LinearLayout.LayoutParams(-1,0,1f))
+
+        chatPage.addView(label("TIN NHẮN TRONG MAP ĐANG CHỌN"))
+        val cs=ScrollView(this)
+        chatList=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        cs.addView(chatList)
+        chatPage.addView(cs,LinearLayout.LayoutParams(-1,0,1f))
         val send=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        messageInput=EditText(this).apply { hint="Nhắn tin…"; setSingleLine(); textSize=13f; setTextColor(Color.WHITE); setHintTextColor(Color.GRAY) }
+        messageInput=EditText(this).apply {
+            hint="Nhắn tin…"; setSingleLine(); textSize=13f
+            setTextColor(Color.WHITE); setHintTextColor(Color.LTGRAY)
+        }
         send.addView(messageInput,LinearLayout.LayoutParams(0,dp(44),1f))
-        send.addView(TextView(this).apply { text="GỬI"; gravity=Gravity.CENTER; setTextColor(Color.WHITE); setPadding(dp(10),0,dp(10),0); setOnClickListener { sendMessage() } },LinearLayout.LayoutParams(dp(55),dp(44)))
-        root.addView(send)
-        root.addView(label("Kéo M đến vị trí tùy ý. Nút × chỉ đóng bảng và hiện lại bong bóng."))
+        send.addView(TextView(this).apply {
+            text="GỬI"; gravity=Gravity.CENTER; setTextColor(Color.WHITE)
+            setPadding(dp(10),0,dp(10),0)
+            background=GradientDrawable().apply { setColor(Color.rgb(25,95,210)); cornerRadius=dp(8).toFloat() }
+            setOnClickListener { sendMessage() }
+        },LinearLayout.LayoutParams(dp(58),dp(44)))
+        chatPage.addView(send)
+        chatPage.addView(label("Chat riêng sẽ được bổ sung ở bước tiếp theo."))
+
+        mapPage.addView(label("MAP CỦA BẠN"))
+        mapPage.addView(label("Chọn map bên dưới để xem thông tin và bật hoặc tắt trạng thái online."))
+        val mapScroll=ScrollView(this)
+        val mapHint=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        mapHint.addView(label("Tạo map mới và chỉnh sửa tên, phiên bản, mô tả trong ứng dụng Omlet Reborn."))
+        mapHint.addView(label("Các nút BẬT MAP / TẮT MAP xuất hiện trong thẻ map do bạn sở hữu."))
+        mapScroll.addView(mapHint)
+        mapPage.addView(mapScroll,LinearLayout.LayoutParams(-1,0,1f))
+
+        content.addView(worldPage,FrameLayout.LayoutParams(-1,-1))
+        content.addView(chatPage,FrameLayout.LayoutParams(-1,-1))
+        content.addView(mapPage,FrameLayout.LayoutParams(-1,-1))
+        right.addView(content,LinearLayout.LayoutParams(-1,0,1f))
+        if(wide) {
+            root.addView(hero,LinearLayout.LayoutParams(0,-1,0.40f))
+            root.addView(right,LinearLayout.LayoutParams(0,-1,0.60f))
+        } else {
+            root.addView(hero,LinearLayout.LayoutParams(-1,dp(90)))
+            root.addView(right,LinearLayout.LayoutParams(-1,0,1f))
+        }
         panel=root
         bubble?.visibility=View.GONE
-        runCatching { wm.addView(root,lp(dp(340), (resources.displayMetrics.heightPixels * 0.78f).toInt(), true).apply { gravity=Gravity.RIGHT or Gravity.CENTER_VERTICAL; x=0; y=0 }) }.onFailure { panel=null; bubble?.visibility=View.VISIBLE }
+        val panelWidth=if(wide) (screenW*0.94f).toInt() else (screenW*0.94f).toInt()
+        val panelHeight=(screenH*0.82f).toInt()
+        runCatching {
+            wm.addView(root,lp(panelWidth,panelHeight,true).apply {
+                gravity=Gravity.CENTER; x=0; y=0
+            })
+        }.onFailure { panel=null; bubble?.visibility=View.VISIBLE }
         listenRooms()
     }
 
