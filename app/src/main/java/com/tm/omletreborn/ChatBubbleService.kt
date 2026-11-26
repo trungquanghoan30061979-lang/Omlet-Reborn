@@ -100,8 +100,8 @@ class ChatBubbleService : Service() {
         val screenH=resources.displayMetrics.heightPixels
         val wide=screenW>screenH
         val root=LinearLayout(this).apply {
-            orientation=if(wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
-            setPadding(dp(8),dp(8),dp(8),dp(8))
+            orientation=LinearLayout.HORIZONTAL
+            setPadding(dp(5),dp(5),dp(5),dp(5))
             background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 intArrayOf(Color.rgb(4,7,18),Color.rgb(25,35,105),Color.rgb(49,58,170))).apply {
                 cornerRadius=0f
@@ -244,17 +244,13 @@ class ChatBubbleService : Service() {
         content.addView(chatPage,FrameLayout.LayoutParams(-1,-1))
         content.addView(mapPage,FrameLayout.LayoutParams(-1,-1))
         right.addView(content,LinearLayout.LayoutParams(-1,0,1f))
-        if(wide) {
-            root.addView(hero,LinearLayout.LayoutParams(0,-1,0.40f))
-            root.addView(right,LinearLayout.LayoutParams(0,-1,0.60f))
-        } else {
-            root.addView(hero,LinearLayout.LayoutParams(-1,dp(72)))
-            root.addView(right,LinearLayout.LayoutParams(-1,0,1f))
-        }
+        root.addView(hero,LinearLayout.LayoutParams(0,-1,0.36f))
+        root.addView(right,LinearLayout.LayoutParams(0,-1,0.64f))
         panel=root
         bubble?.visibility=View.GONE
-        val panelWidth=screenW
-        val panelHeight=screenH
+        // Cửa sổ nổi ở giữa màn hình, giữ lại phần Minecraft phía sau.
+        val panelWidth=(screenW*0.90f).toInt().coerceAtMost(dp(980))
+        val panelHeight=(screenH*0.76f).toInt().coerceAtMost(dp(560))
         runCatching {
             wm.addView(root,lp(panelWidth,panelHeight,true).apply {
                 gravity=Gravity.CENTER; x=0; y=0
