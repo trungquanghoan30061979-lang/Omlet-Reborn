@@ -136,128 +136,114 @@ class ChatBubbleService : Service() {
         val screenH=resources.displayMetrics.heightPixels
         val wide=screenW>screenH
         val root=LinearLayout(this).apply {
-            orientation=LinearLayout.HORIZONTAL
-            clipToOutline=true
-            setPadding(dp(5),dp(5),dp(5),dp(5))
-            background=android.graphics.drawable.LayerDrawable(arrayOf(
-                android.graphics.drawable.BitmapDrawable(resources, android.graphics.BitmapFactory.decodeResource(resources, R.drawable.minecraft_background)),
-                android.graphics.drawable.ColorDrawable(Color.argb(138,4,7,18)),
-                GradientDrawable().apply {
-                    setColor(Color.TRANSPARENT)
-                    cornerRadius=dp(24).toFloat()
-                    setStroke(dp(2),Color.rgb(52,105,220))
-                }
-            ))
-            clipToOutline=true
-        }
-
-        // Banner Minecraft ở cột trái, theo bố cục trong bản thiết kế PDF.
-        val hero=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
-            gravity=Gravity.CENTER
-            setPadding(dp(12),dp(12),dp(12),dp(12))
-            background=android.graphics.drawable.LayerDrawable(arrayOf(
-                android.graphics.drawable.BitmapDrawable(resources, android.graphics.BitmapFactory.decodeResource(resources, R.drawable.minecraft_background)).apply {
-                    gravity=android.view.Gravity.FILL
-                },
-                android.graphics.drawable.ColorDrawable(Color.argb(145,5,17,50)),
-                GradientDrawable().apply {
-                    setColor(Color.TRANSPARENT)
-                    cornerRadius=dp(15).toFloat()
-                }
-            ))
             clipToOutline=true
-            val heroHeader=LinearLayout(this@ChatBubbleService).apply {
-                orientation=LinearLayout.HORIZONTAL
-                gravity=Gravity.CENTER_VERTICAL
+            setPadding(dp(12),dp(12),dp(12),dp(12))
+            background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.rgb(3,5,15),Color.rgb(8,13,42),Color.rgb(35,47,145))).apply {
+                cornerRadius=dp(26).toFloat()
+                setStroke(dp(2),Color.rgb(52,105,220))
             }
-            heroHeader.addView(TextView(this@ChatBubbleService).apply {
-                text="‹"; textSize=38f; gravity=Gravity.CENTER
-                setTextColor(Color.WHITE)
-                background=GradientDrawable().apply {
-                    setColor(Color.argb(115,5,18,48))
-                    cornerRadius=dp(10).toFloat()
-                }
-                setOnClickListener { closePanel() }
-            },LinearLayout.LayoutParams(dp(42),dp(42)))
-            heroHeader.addView(TextView(this@ChatBubbleService).apply {
-                text="OMLET REBORN"; textSize=if(wide) 23f else 20f
-                typeface=Typeface.create("sans-serif-condensed",Typeface.BOLD)
-                gravity=Gravity.CENTER; setTextColor(Color.rgb(60,112,255))
-            },LinearLayout.LayoutParams(0,dp(52),1f))
-            addView(heroHeader,LinearLayout.LayoutParams(-1,dp(52)))
-            val spacer=View(this@ChatBubbleService)
-            heroSpacer@ run {
-                addView(spacer,LinearLayout.LayoutParams(1,0,1f))
-            }
-            addView(TextView(this@ChatBubbleService).apply {
-                text="MINECRAFT"; textSize=if(wide) 27f else 23f
-                typeface=Typeface.create("sans-serif-condensed",Typeface.BOLD)
-                gravity=Gravity.CENTER; setTextColor(Color.WHITE)
-            },LinearLayout.LayoutParams(-1,dp(54)))
-            addView(TextView(this@ChatBubbleService).apply {
-                text="CHƠI CÙNG BẠN BÈ"; textSize=10f
-                gravity=Gravity.CENTER; setTextColor(Color.rgb(150,205,255))
-            })
         }
 
+        // Reference layout: logo + three icon controls + close button in the top row.
+        val header=LinearLayout(this).apply {
+            orientation=LinearLayout.HORIZONTAL
+            gravity=Gravity.CENTER_VERTICAL
+        }
+        val logo=TextView(this).apply {
+            text="OMLET REBORN"
+            textSize=if(wide) 25f else 20f
+            typeface=Typeface.create("sans-serif-condensed",Typeface.BOLD)
+            gravity=Gravity.CENTER
+            setTextColor(Color.rgb(45,112,255))
+            background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.rgb(5,13,42),Color.rgb(29,39,112))).apply {
+                cornerRadius=dp(18).toFloat()
+            }
+        }
+        header.addView(logo,LinearLayout.LayoutParams(0,dp(66),1f).apply { rightMargin=dp(12) })
+        val nav=LinearLayout(this).apply {
+            orientation=LinearLayout.HORIZONTAL
+            gravity=Gravity.CENTER_VERTICAL
+        }
+        val title=TextView(this).apply {
+            text="CÁC THẾ GIỚI"; textSize=if(wide) 21f else 17f
+            typeface=Typeface.create("sans-serif-condensed",Typeface.BOLD)
+            setTextColor(Color.WHITE); gravity=Gravity.CENTER
+        }
         val right=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
-            setPadding(dp(8),dp(2),dp(2),dp(2))
-        }
-        val top=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL }
-        val title=TextView(this).apply {
-            text="CÁC THẾ GIỚI"; textSize=20f; typeface=Typeface.DEFAULT_BOLD
-            setTextColor(Color.WHITE); gravity=Gravity.CENTER_VERTICAL
-        }
-        top.addView(title,LinearLayout.LayoutParams(0,dp(42),1f))
-        top.addView(TextView(this).apply {
-            text="×"; textSize=29f; gravity=Gravity.CENTER; setTextColor(Color.rgb(50,135,235))
-            background=GradientDrawable().apply { setColor(Color.rgb(210,225,245)); cornerRadius=dp(10).toFloat() }
-            setOnClickListener { closePanel() }
-        },LinearLayout.LayoutParams(dp(42),dp(42)))
-        right.addView(top)
-
-        val tabs=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER }
-        fun tabButton(caption:String, selected:Boolean, iconRes:Int, action:()->Unit):LinearLayout = LinearLayout(this).apply {
-            orientation=LinearLayout.HORIZONTAL
-            gravity=Gravity.CENTER
-            setPadding(dp(7),dp(6),dp(7),dp(6))
-            background=GradientDrawable().apply {
-                setColor(if(selected) Color.rgb(24,75,190) else Color.rgb(10,18,42))
-                cornerRadius=dp(9).toFloat()
-                if(selected) setStroke(dp(2),Color.WHITE)
-            }
-            addView(ImageView(this@ChatBubbleService).apply {
-                setImageResource(iconRes)
-                scaleType=ImageView.ScaleType.FIT_CENTER
-            },LinearLayout.LayoutParams(dp(22),dp(22)))
-            addView(TextView(this@ChatBubbleService).apply {
-                text=caption; textSize=if(wide) 12f else 11f
-                gravity=Gravity.CENTER; typeface=Typeface.DEFAULT_BOLD
-                setTextColor(Color.WHITE)
-                setPadding(dp(5),0,0,0)
-            })
-            setOnClickListener { action() }
+            setPadding(dp(8),0,0,0)
         }
         val content=FrameLayout(this)
         val worldPage=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
         val chatPage=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; visibility=View.GONE }
         val mapPage=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; visibility=View.GONE }
-        fun selectTab(which:Int) {
+
+        lateinit var selectTab:(Int)->Unit
+        fun navIcon(iconRes:Int, selected:Boolean, action:()->Unit):ImageView = ImageView(this).apply {
+            setImageResource(iconRes)
+            scaleType=ImageView.ScaleType.FIT_CENTER
+            setPadding(dp(7),dp(7),dp(7),dp(7))
+            background=GradientDrawable().apply {
+                setColor(if(selected) Color.rgb(22,52,150) else Color.rgb(7,12,37))
+                cornerRadius=dp(13).toFloat()
+                if(selected) setStroke(dp(2),Color.WHITE)
+            }
+            setOnClickListener { action() }
+        }
+        fun renderNav(which:Int) {
+            nav.removeAllViews()
+            nav.addView(navIcon(R.drawable.world_art,which==0){selectTab(0)},
+                LinearLayout.LayoutParams(dp(58),dp(58)).apply { rightMargin=dp(8) })
+            nav.addView(navIcon(R.drawable.chat_tab_icon,which==1){selectTab(1)},
+                LinearLayout.LayoutParams(dp(58),dp(58)).apply { rightMargin=dp(8) })
+            nav.addView(navIcon(R.drawable.create_map_tab_icon,which==2){selectTab(2)},
+                LinearLayout.LayoutParams(dp(58),dp(58)).apply { rightMargin=dp(8) })
+            nav.addView(TextView(this).apply {
+                text="X"; textSize=28f; gravity=Gravity.CENTER
+                typeface=Typeface.DEFAULT_BOLD; setTextColor(Color.rgb(45,112,205))
+                background=GradientDrawable().apply {
+                    setColor(Color.rgb(215,229,248)); cornerRadius=dp(13).toFloat()
+                }
+                setOnClickListener { closePanel() }
+            },LinearLayout.LayoutParams(dp(58),dp(58)))
+        }
+        selectTab = { which ->
             worldPage.visibility=if(which==0) View.VISIBLE else View.GONE
             chatPage.visibility=if(which==1) View.VISIBLE else View.GONE
             mapPage.visibility=if(which==2) View.VISIBLE else View.GONE
-            title.text=when(which) { 1->"CHAT CHUNG"; 2->"TẠO MAP"; else->"CÁC THẾ GIỚI" }
-            tabs.removeAllViews()
-            tabs.addView(tabButton("THẾ GIỚI",which==0,R.drawable.world_art){selectTab(0)},LinearLayout.LayoutParams(0,dp(42),1f))
-            tabs.addView(tabButton("CHAT",which==1,android.R.drawable.sym_action_chat){selectTab(1)},LinearLayout.LayoutParams(0,dp(42),1f))
-            tabs.addView(tabButton("TẠO MAP",which==2,android.R.drawable.ic_menu_mapmode){selectTab(2)},LinearLayout.LayoutParams(0,dp(42),1f))
+            title.text=when(which) { 1->"CHAT"; 2->"TẠO MAP"; else->"CÁC THẾ GIỚI" }
+            renderNav(which)
         }
-        tabs.addView(tabButton("THẾ GIỚI",true,R.drawable.world_art){selectTab(0)},LinearLayout.LayoutParams(0,dp(42),1f))
-        tabs.addView(tabButton("CHAT",false,android.R.drawable.sym_action_chat){selectTab(1)},LinearLayout.LayoutParams(0,dp(42),1f))
-        tabs.addView(tabButton("TẠO MAP",false,android.R.drawable.ic_menu_mapmode){selectTab(2)},LinearLayout.LayoutParams(0,dp(42),1f))
-        right.addView(tabs)
+        renderNav(0)
+        header.addView(nav,LinearLayout.LayoutParams(-2,dp(66)))
+        root.addView(header,LinearLayout.LayoutParams(-1,dp(72)))
+
+        val body=LinearLayout(this).apply {
+            orientation=LinearLayout.HORIZONTAL
+            setPadding(0,dp(10),0,0)
+        }
+        val hero=FrameLayout(this).apply {
+            background=GradientDrawable().apply { setColor(Color.BLACK); cornerRadius=dp(17).toFloat() }
+            clipToOutline=true
+        }
+        hero.addView(ImageView(this).apply {
+            setImageResource(R.drawable.minecraft_background)
+            scaleType=ImageView.ScaleType.CENTER_CROP
+        },FrameLayout.LayoutParams(-1,-1))
+        hero.addView(View(this).apply { setBackgroundColor(Color.argb(28,0,0,0)) },
+            FrameLayout.LayoutParams(-1,-1))
+        hero.addView(TextView(this).apply {
+            text="MINECRAFT"; textSize=if(wide) 29f else 23f
+            typeface=Typeface.create("sans-serif-condensed",Typeface.BOLD)
+            setTextColor(Color.WHITE); gravity=Gravity.CENTER_VERTICAL
+            setPadding(dp(18),0,dp(12),dp(10))
+            setShadowLayer(dp(4).toFloat(),0f,dp(2).toFloat(),Color.BLACK)
+        },FrameLayout.LayoutParams(-1,dp(62),Gravity.BOTTOM))
+        body.addView(hero,LinearLayout.LayoutParams(0,-1,0.59f).apply { rightMargin=dp(12) })
+        right.addView(title,LinearLayout.LayoutParams(-1,dp(46)))
         status=label("Đang tải map từ máy chủ…")
         worldPage.addView(status)
         val rs=ScrollView(this)
@@ -317,8 +303,8 @@ class ChatBubbleService : Service() {
         content.addView(chatPage,FrameLayout.LayoutParams(-1,-1))
         content.addView(mapPage,FrameLayout.LayoutParams(-1,-1))
         right.addView(content,LinearLayout.LayoutParams(-1,0,1f))
-        root.addView(hero,LinearLayout.LayoutParams(0,-1,0.36f))
-        root.addView(right,LinearLayout.LayoutParams(0,-1,0.64f))
+        body.addView(right,LinearLayout.LayoutParams(0,-1,0.41f))
+        root.addView(body,LinearLayout.LayoutParams(-1,0,1f))
         panel=root
         bubble?.visibility=View.GONE
         // Cửa sổ nổi ở giữa màn hình, giữ lại phần Minecraft phía sau.
