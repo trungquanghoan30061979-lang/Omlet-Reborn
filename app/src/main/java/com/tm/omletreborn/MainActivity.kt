@@ -517,6 +517,9 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                                                 val members=(snap.get("members") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
                                                 val names=(snap.get("memberNames") as? Map<*,*>)?.entries
                                                     ?.mapNotNull { (k,v) -> if(k is String && v is String) k to v else null }?.toMap()?.toMutableMap() ?: mutableMapOf()
+                                                members.forEach { memberUid ->
+                                                    names.putIfAbsent(memberUid, if(memberUid==snap.getString("hostUid")) (snap.getString("hostEmail") ?: "Chủ phòng").substringBefore("@") else "Người chơi")
+                                                }
                                                 names.remove(uid)
                                                 tx.update(ref,mapOf(
                                                     "members" to FieldValue.arrayRemove(uid),
@@ -543,6 +546,9 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                                                         ?.mapNotNull { (k,v) -> if(k is String && v is String) k to v else null }?.toMap()?.toMutableMap() ?: mutableMapOf()
                                                     val hostUid=snap.getString("hostUid")
                                                     val hostName=(snap.getString("hostEmail") ?: "Chủ phòng").substringBefore("@")
+                                                    members.forEach { memberUid ->
+                                                        names.putIfAbsent(memberUid, if(memberUid==hostUid) hostName else "Người chơi")
+                                                    }
                                                     if(!hostUid.isNullOrBlank()) names.putIfAbsent(hostUid,hostName)
                                                     names[uid]=user?.email?.substringBefore("@") ?: "Người chơi"
                                                     tx.update(ref,mapOf(
