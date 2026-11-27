@@ -25,10 +25,18 @@ class ChatBubbleService : Service() {
     private var panel: View? = null
     private var roomListener: ListenerRegistration? = null
     private var messageListener: ListenerRegistration? = null
+    private var friendsListener: ListenerRegistration? = null
+    private var privateMessageListener: ListenerRegistration? = null
     private var selectedRoom: String? = null
+    private var selectedPrivateFriend: Pair<String, String>? = null
     private var roomList: LinearLayout? = null
     private var chatList: LinearLayout? = null
     private var messageInput: EditText? = null
+    private var privateFriendsList: LinearLayout? = null
+    private var privateChatHome: LinearLayout? = null
+    private var privateChatArea: LinearLayout? = null
+    private var privateMessagesList: LinearLayout? = null
+    private var privateMessageInput: EditText? = null
     private var status: TextView? = null
     private lateinit var bubbleParams: WindowManager.LayoutParams
     private val heartbeatHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -138,12 +146,9 @@ class ChatBubbleService : Service() {
         val root=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
             clipToOutline=true
-            setPadding(dp(12),dp(12),dp(12),dp(12))
+            setPadding(dp(16),dp(12),dp(16),dp(12))
             background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(Color.rgb(3,5,15),Color.rgb(8,13,42),Color.rgb(35,47,145))).apply {
-                cornerRadius=dp(26).toFloat()
-                setStroke(dp(2),Color.rgb(52,105,220))
-            }
+                intArrayOf(Color.rgb(3,5,15),Color.rgb(8,13,42),Color.rgb(35,47,145)))
         }
 
         // Reference layout: logo + three icon controls + close button in the top row.
@@ -208,7 +213,7 @@ class ChatBubbleService : Service() {
                     setColor(Color.rgb(215,229,248)); cornerRadius=dp(13).toFloat()
                 }
                 setOnClickListener { closePanel() }
-            },LinearLayout.LayoutParams(dp(58),dp(58)))
+            },LinearLayout.LayoutParams(dp(40),dp(40)))
         }
         selectTab = { which ->
             worldPage.visibility=if(which==0) View.VISIBLE else View.GONE
@@ -216,6 +221,7 @@ class ChatBubbleService : Service() {
             mapPage.visibility=if(which==2) View.VISIBLE else View.GONE
             title.text=when(which) { 1->"CHAT"; 2->"TẠO MAP"; else->"CÁC THẾ GIỚI" }
             renderNav(which)
+            if(which==1) listenFriends()
         }
         renderNav(0)
         header.addView(nav,LinearLayout.LayoutParams(-2,dp(66)))
@@ -251,25 +257,49 @@ class ChatBubbleService : Service() {
         rs.addView(roomList)
         worldPage.addView(rs,LinearLayout.LayoutParams(-1,0,1f))
 
-        chatPage.addView(label("TIN NHẮN TRONG MAP ĐANG CHỌN"))
+        privateChatHome=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+        }
+        privateChatHome!!.addView(TextView(this).apply {
+            text="CHAT CHUNG"; textSize=18f; typeface=Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE); setPadding(0,dp(3),0,dp(5))
+        })
+        privateChatHome!!.addView(label("TIN NHẮN TRONG MAP ĐANG CHỌN"))
         val cs=ScrollView(this)
         chatList=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
         cs.addView(chatList)
-        chatPage.addView(cs,LinearLayout.LayoutParams(-1,0,1f))
+        privateChatHome!!.addView(cs,LinearLayout.LayoutParams(-1,0,0.42f))
         val send=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
         messageInput=EditText(this).apply {
-            hint="Nhắn tin…"; setSingleLine(); textSize=13f
+            hint="Nhắn tin chung…"; setSingleLine(); textSize=13f
             setTextColor(Color.WHITE); setHintTextColor(Color.LTGRAY)
         }
-        send.addView(messageInput,LinearLayout.LayoutParams(0,dp(44),1f))
+        send.addView(messageInput,LinearLayout.LayoutParams(0,dp(42),1f))
         send.addView(TextView(this).apply {
             text="GỬI"; gravity=Gravity.CENTER; setTextColor(Color.WHITE)
             setPadding(dp(10),0,dp(10),0)
             background=GradientDrawable().apply { setColor(Color.rgb(25,95,210)); cornerRadius=dp(8).toFloat() }
             setOnClickListener { sendMessage() }
-        },LinearLayout.LayoutParams(dp(58),dp(44)))
-        chatPage.addView(send)
-        chatPage.addView(label("Chat riêng sẽ được bổ sung ở bước tiếp theo."))
+        },LinearLayout.LayoutParams(dp(58),dp(42)))
+        privateChatHome!!.addView(send)
+        privateChatHome!!.addView(View(this).apply {
+            setBackgroundColor(Color.argb(130,190,205,235))
+        },LinearLayout.LayoutParams(-1,dp(1)).apply { topMargin=dp(7); bottomMargin=dp(7) })
+        privateChatHome!!.addView(TextView(this).apply {
+            text="CHAT RIÊNG"; textSize=18f; typeface=Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(205,215,245)); setPadding(0,dp(2),0,dp(5))
+        })
+        val friendsScroll=ScrollView(this)
+        privateFriendsList=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+        friendsScroll.addView(privateFriendsList)
+        privateChatHome!!.addView(friendsScroll,LinearLayout.LayoutParams(-1,0,0.58f))
+        chatPage.addView(privateChatHome,LinearLayout.LayoutParams(-1,-1))
+
+        privateChatArea=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            visibility=View.GONE
+        }
+        chatPage.addView(privateChatArea,LinearLayout.LayoutParams(-1,-1))
 
         mapPage.addView(label("QUẢN LÝ THẾ GIỚI CỦA BẠN"))
         mapPage.addView(label("Map do bạn tạo sẽ hiện ở tab THẾ GIỚI. Chọn map để xem chat và trạng thái."))
@@ -308,11 +338,11 @@ class ChatBubbleService : Service() {
         panel=root
         bubble?.visibility=View.GONE
         // Cửa sổ nổi ở giữa màn hình, giữ lại phần Minecraft phía sau.
-        val panelWidth=(screenW*0.90f).toInt().coerceAtMost(dp(980))
-        val panelHeight=(screenH*0.76f).toInt().coerceAtMost(dp(560))
+        val panelWidth=screenW
+        val panelHeight=screenH
         runCatching {
             wm.addView(root,lp(panelWidth,panelHeight,true).apply {
-                gravity=Gravity.CENTER; x=0; y=0
+                gravity=Gravity.TOP or Gravity.START; x=0; y=0
             })
         }.onFailure { panel=null; bubble?.visibility=View.VISIBLE }
         listenRooms()
@@ -409,8 +439,13 @@ class ChatBubbleService : Service() {
 
     private fun closePanel() {
         roomListener?.remove(); roomListener=null; messageListener?.remove(); messageListener=null
+        friendsListener?.remove(); friendsListener=null
+        privateMessageListener?.remove(); privateMessageListener=null
+        selectedPrivateFriend=null
         panel?.let { runCatching { wm.removeView(it) } }; panel=null
         roomList=null; chatList=null; messageInput=null; status=null
+        privateFriendsList=null; privateChatHome=null; privateChatArea=null
+        privateMessagesList=null; privateMessageInput=null
         bubble?.visibility=View.VISIBLE
     }
 
