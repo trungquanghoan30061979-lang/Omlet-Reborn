@@ -366,6 +366,14 @@ class ChatBubbleService : Service() {
             box.removeAllViews()
             if(err!=null) { status?.text="Không tải được phòng. Kiểm tra Firestore Rules."; return@addSnapshotListener }
             val all=snap?.documents.orEmpty()
+            selectedRoom?.let { selectedId ->
+                all.firstOrNull { it.id==selectedId }?.let { selectedDoc ->
+                    roomMemberUids=(selectedDoc.get("members") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                    roomMemberNames=(selectedDoc.get("memberNames") as? Map<*,*>)?.entries
+                        ?.mapNotNull { (k,v) -> if(k is String && v is String) k to v else null }?.toMap().orEmpty()
+                    renderRoomChatTabs()
+                }
+            }
             val own=all.filter { it.getString("hostUid")==uid }
             val docs=all.filter { d ->
                 val heartbeat=d.getTimestamp("lastHeartbeat")
