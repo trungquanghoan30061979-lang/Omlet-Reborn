@@ -31,6 +31,11 @@ class ChatBubbleService : Service() {
     private var selectedPrivateFriend: Pair<String, String>? = null
     private var roomList: LinearLayout? = null
     private var chatList: LinearLayout? = null
+    private var roomChatTabs: LinearLayout? = null
+    private var roomMessageDocs: List<com.google.firebase.firestore.DocumentSnapshot> = emptyList()
+    private var roomMemberUids: List<String> = emptyList()
+    private var roomMemberNames: Map<String, String> = emptyMap()
+    private var selectedChatMemberUid: String? = null
     private var messageInput: EditText? = null
     private var privateFriendsList: LinearLayout? = null
     private var privateChatHome: LinearLayout? = null
@@ -265,6 +270,10 @@ class ChatBubbleService : Service() {
             setTextColor(Color.WHITE); setPadding(0,dp(3),0,dp(5))
         })
         privateChatHome!!.addView(label("TIN NHẮN TRONG MAP ĐANG CHỌN"))
+        val memberTabsScroll=HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled=false }
+        roomChatTabs=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        memberTabsScroll.addView(roomChatTabs)
+        privateChatHome!!.addView(memberTabsScroll,LinearLayout.LayoutParams(-1,dp(42)))
         val cs=ScrollView(this)
         chatList=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
         cs.addView(chatList)
@@ -406,6 +415,11 @@ class ChatBubbleService : Service() {
                 }
                 card.setOnClickListener {
                     selectedRoom=d.id
+                    roomMemberUids=(d.get("members") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                    roomMemberNames=(d.get("memberNames") as? Map<*,*>)?.entries
+                        ?.mapNotNull { (k,v) -> if(k is String && v is String) k to v else null }?.toMap().orEmpty()
+                    selectedChatMemberUid=null
+                    renderRoomChatTabs()
                     listenMessages(d.id)
                     status?.text="Đã chọn map: $n • Mở tab CHAT để nhắn tin"
                 }
@@ -414,14 +428,68 @@ class ChatBubbleService : Service() {
         }
     }
 
+    private fun renderRoomChatTabs() {
+        val tabs=roomChatTabs ?: return
+        tabs.removeAllViews()
+        fun addTab(caption:String, memberUid:String?) {
+            val selected=selectedChatMemberUid==memberUid
+            val chip=TextView(this).apply {
+                text=caption
+                textSize=11f
+                typeface=Typeface.DEFAULT_BOLD
+                gravity=Gravity.CENTER
+                setTextColor(Color.WHITE)
+                setPadding(dp(13),dp(7),dp(13),dp(7))
+                background=GradientDrawable().apply {
+                    setColor(if(selected) Color.rgb(25,83,195) else Color.rgb(12,22,52))
+                    cornerRadius=dp(10).toFloat()
+                    if(selected) setStroke(dp(1),Color.WHITE)
+                }
+                setOnClickListener {
+                    selectedChatMemberUid=memberUid
+                    renderRoomChatTabs()
+                    renderRoomMessages()
+                }
+            }
+            tabs.addView(chip,LinearLayout.LayoutParams(-2,dp(36)).apply { rightMargin=dp(6) })
+        }
+        addTab("TẤT CẢ",null)
+        roomMemberUids.forEach { memberUid ->
+            val accountName=roomMemberNames[memberUid]
+                ?: if(memberUid==FirebaseAuth.getInstance().currentUser?.uid) "Bạn"
+                else "Thành viên ${memberUid.takeLast(4)}"
+            addTab(accountName,memberUid)
+        }
+    }
+
+    private fun renderRoomMessages() {
+        val box=chatList ?: return
+        box.removeAllViews()
+        val filtered=if(selectedChatMemberUid==null) roomMessageDocs
+            else roomMessageDocs.filter { it.getString("senderUid")==selectedChatMemberUid }
+        if(filtered.isEmpty()) {
+            box.addView(label(if(selectedChatMemberUid==null) "Chưa có tin nhắn trong map." else "Thành viên này chưa gửi tin nhắn."))
+            return
+        }
+        filtered.forEach { doc ->
+            val uid=doc.getString("senderUid").orEmpty()
+            val name=doc.getString("senderName") ?: roomMemberNames[uid] ?: "Người chơi"
+            box.addView(label("$name: ${doc.getString("text") ?: ""}"))
+        }
+    }
+
     private fun listenMessages(id:String) {
         messageListener?.remove(); selectedRoom=id; chatList?.removeAllViews()
-        messageListener=FirebaseFirestore.getInstance().collection("rooms").document(id).collection("messages").orderBy("createdAt").limit(30).addSnapshotListener { snap,err ->
-            val box=chatList ?: return@addSnapshotListener
-            box.removeAllViews()
-            if(err!=null) { box.addView(label("Chat chưa được cấp quyền Firestore.")); return@addSnapshotListener }
-            snap?.documents?.forEach { d -> box.addView(label("${d.getString("senderName") ?: "Người chơi"}: ${d.getString("text") ?: ""}")) }
-        }
+        messageListener=FirebaseFirestore.getInstance().collection("rooms").document(id).collection("messages")
+            .orderBy("createdAt").limit(100).addSnapshotListener { snap,err ->
+                if(err!=null) {
+                    chatList?.removeAllViews()
+                    chatList?.addView(label("Chat chưa được cấp quyền Firestore."))
+                    return@addSnapshotListener
+                }
+                roomMessageDocs=snap?.documents.orEmpty()
+                renderRoomMessages()
+            }
     }
 
     private fun listenFriends() {
@@ -630,6 +698,8 @@ class ChatBubbleService : Service() {
         selectedPrivateFriend=null
         panel?.let { runCatching { wm.removeView(it) } }; panel=null
         roomList=null; chatList=null; messageInput=null; status=null
+        roomChatTabs=null; roomMessageDocs=emptyList(); roomMemberUids=emptyList()
+        roomMemberNames=emptyMap(); selectedChatMemberUid=null
         privateFriendsList=null; privateChatHome=null; privateChatArea=null
         privateMessagesList=null; privateMessageInput=null
         bubble?.visibility=View.VISIBLE
