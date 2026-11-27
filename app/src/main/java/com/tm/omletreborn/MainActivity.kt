@@ -509,8 +509,20 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                                     }) { Text("Đóng phòng") }
                                 } else if (joined) {
                                     OutlinedButton(onClick = {
-                                        db.collection("rooms").document(room.id).update("members", FieldValue.arrayRemove(user?.uid))
-                                            .addOnSuccessListener { info = "Đã rời phòng." }
+                                        run {
+                                            val uid=user?.uid ?: return@run
+                                            val ref=db.collection("rooms").document(room.id)
+                                            db.runTransaction { tx ->
+                                                val snap=tx.get(ref)
+                                                val members=(snap.get("members") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                                                val names=(snap.get("memberNames") as? Map<*,*>)?.entries
+                                                    ?.mapNotNull { (k,v) -> if(k is String && v is String) k to v else null }?.toMap()?.toMutableMap() ?: mutableMapOf()
+                                                names.remove(uid)
+                                                tx.update(ref,mapOf(
+                                                    "members" to FieldValue.arrayRemove(uid),
+                                                    "memberNames" to names
+                                                ))
+                                            }.addOnSuccessListener { info = "Đã rời phòng." }
                                             .addOnFailureListener { error = it.localizedMessage ?: "Không thể rời phòng." }
                                     }) { Text("Rời phòng") }
                                 } else {
@@ -526,7 +538,18 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                                                 val cap = (snap.getLong("maxPlayers") ?: 8L).toInt()
                                                 if (snap.getString("status") != "open") throw IllegalStateException("Phòng đã đóng.")
                                                 if (uid !in members && members.size >= cap) throw IllegalStateException("Phòng đã đủ người.")
-                                                if (uid !in members) tx.update(ref, "members", FieldValue.arrayUnion(uid))
+                                                if (uid !in members) {
+                                                    val names=(snap.get("memberNames") as? Map<*,*>)?.entries
+                                                        ?.mapNotNull { (k,v) -> if(k is String && v is String) k to v else null }?.toMap()?.toMutableMap() ?: mutableMapOf()
+                                                    val hostUid=snap.getString("hostUid")
+                                                    val hostName=(snap.getString("hostEmail") ?: "Chủ phòng").substringBefore("@")
+                                                    if(!hostUid.isNullOrBlank()) names.putIfAbsent(hostUid,hostName)
+                                                    names[uid]=user?.email?.substringBefore("@") ?: "Người chơi"
+                                                    tx.update(ref,mapOf(
+                                                        "members" to FieldValue.arrayUnion(uid),
+                                                        "memberNames" to names
+                                                    ))
+                                                }
                                             }.addOnSuccessListener { info = "Đã tham gia phòng!" ; busy = false }
                                                 .addOnFailureListener { error = it.localizedMessage ?: "Không thể tham gia."; busy = false }
                                         }
@@ -586,6 +609,7 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                                 "hostEmail" to (userEmail.ifBlank { "Người chơi" }),
                                 "maxPlayers" to (maxPlayers.toLongOrNull() ?: 8L),
                                 "members" to listOf(uid),
+                                "memberNames" to mapOf(uid to (userEmail.substringBefore("@").ifBlank { "Người chơi" })),
                                 "status" to "open",
                                 "isLive" to false,
                                 "createdAt" to FieldValue.serverTimestamp()
