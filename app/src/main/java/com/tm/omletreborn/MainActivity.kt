@@ -527,6 +527,7 @@ private fun RoomsPage(signedIn: Boolean, userEmail: String, onLogin: () -> Unit)
                                                 ))
                                             }.addOnSuccessListener { info = "Đã rời phòng." }
                                             .addOnFailureListener { error = it.localizedMessage ?: "Không thể rời phòng." }
+                                        }
                                     }) { Text("Rời phòng") }
                                 } else {
                                     Button(
