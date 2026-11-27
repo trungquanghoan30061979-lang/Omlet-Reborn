@@ -156,10 +156,17 @@ class ChatBubbleService : Service() {
             orientation=LinearLayout.VERTICAL
             gravity=Gravity.CENTER
             setPadding(dp(12),dp(12),dp(12),dp(12))
-            background=GradientDrawable().apply {
-                setColor(Color.argb(142,8,28,78))
-                cornerRadius=dp(15).toFloat()
-            }
+            background=android.graphics.drawable.LayerDrawable(arrayOf(
+                android.graphics.drawable.BitmapDrawable(resources, android.graphics.BitmapFactory.decodeResource(resources, R.drawable.minecraft_background)).apply {
+                    gravity=android.view.Gravity.FILL
+                },
+                android.graphics.drawable.ColorDrawable(Color.argb(145,5,17,50)),
+                GradientDrawable().apply {
+                    setColor(Color.TRANSPARENT)
+                    cornerRadius=dp(15).toFloat()
+                }
+            ))
+            clipToOutline=true
             addView(TextView(this@ChatBubbleService).apply {
                 text="OMLET REBORN"; textSize=if(wide) 23f else 20f
                 typeface=Typeface.create("sans-serif-condensed",Typeface.BOLD)
@@ -198,15 +205,25 @@ class ChatBubbleService : Service() {
         right.addView(top)
 
         val tabs=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER }
-        fun tabButton(caption:String, selected:Boolean, action:()->Unit):TextView = TextView(this).apply {
-            text=caption; textSize=if(wide) 12f else 11f; gravity=Gravity.CENTER
-            typeface=Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE)
-            setPadding(dp(7),dp(9),dp(7),dp(9))
+        fun tabButton(caption:String, selected:Boolean, iconRes:Int, action:()->Unit):LinearLayout = LinearLayout(this).apply {
+            orientation=LinearLayout.HORIZONTAL
+            gravity=Gravity.CENTER
+            setPadding(dp(7),dp(6),dp(7),dp(6))
             background=GradientDrawable().apply {
                 setColor(if(selected) Color.rgb(24,75,190) else Color.rgb(10,18,42))
                 cornerRadius=dp(9).toFloat()
                 if(selected) setStroke(dp(2),Color.WHITE)
             }
+            addView(ImageView(this@ChatBubbleService).apply {
+                setImageResource(iconRes)
+                scaleType=ImageView.ScaleType.FIT_CENTER
+            },LinearLayout.LayoutParams(dp(22),dp(22)))
+            addView(TextView(this@ChatBubbleService).apply {
+                text=caption; textSize=if(wide) 12f else 11f
+                gravity=Gravity.CENTER; typeface=Typeface.DEFAULT_BOLD
+                setTextColor(Color.WHITE)
+                setPadding(dp(5),0,0,0)
+            })
             setOnClickListener { action() }
         }
         val content=FrameLayout(this)
@@ -233,13 +250,13 @@ class ChatBubbleService : Service() {
             else { chatPreview?.pause(); mapPreview?.pause() }
             title.text=when(which) { 1->"CHAT CHUNG"; 2->"TẠO MAP"; else->"CÁC THẾ GIỚI" }
             tabs.removeAllViews()
-            tabs.addView(tabButton("▣  THẾ GIỚI",which==0){selectTab(0)},LinearLayout.LayoutParams(0,dp(42),1f))
-            tabs.addView(tabButton("●  CHAT",which==1){selectTab(1)},LinearLayout.LayoutParams(0,dp(42),1f))
-            tabs.addView(tabButton("▦  TẠO MAP",which==2){selectTab(2)},LinearLayout.LayoutParams(0,dp(42),1f))
+            tabs.addView(tabButton("THẾ GIỚI",which==0,R.drawable.world_art){selectTab(0)},LinearLayout.LayoutParams(0,dp(42),1f))
+            tabs.addView(tabButton("CHAT",which==1,android.R.drawable.sym_action_chat){selectTab(1)},LinearLayout.LayoutParams(0,dp(42),1f))
+            tabs.addView(tabButton("TẠO MAP",which==2,android.R.drawable.ic_menu_mapmode){selectTab(2)},LinearLayout.LayoutParams(0,dp(42),1f))
         }
-        tabs.addView(tabButton("▣  THẾ GIỚI",true){selectTab(0)},LinearLayout.LayoutParams(0,dp(42),1f))
-        tabs.addView(tabButton("●  CHAT",false){selectTab(1)},LinearLayout.LayoutParams(0,dp(42),1f))
-        tabs.addView(tabButton("▦  TẠO MAP",false){selectTab(2)},LinearLayout.LayoutParams(0,dp(42),1f))
+        tabs.addView(tabButton("THẾ GIỚI",true,R.drawable.world_art){selectTab(0)},LinearLayout.LayoutParams(0,dp(42),1f))
+        tabs.addView(tabButton("CHAT",false,android.R.drawable.sym_action_chat){selectTab(1)},LinearLayout.LayoutParams(0,dp(42),1f))
+        tabs.addView(tabButton("TẠO MAP",false,android.R.drawable.ic_menu_mapmode){selectTab(2)},LinearLayout.LayoutParams(0,dp(42),1f))
         right.addView(tabs)
         status=label("Đang tải map từ máy chủ…")
         worldPage.addView(status)
