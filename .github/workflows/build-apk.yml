@@ -1,4 +1,5 @@
 name: Build Omlet Reborn APK
+# Rebuild requested on 2026-11-28
 
 on:
   workflow_dispatch:
