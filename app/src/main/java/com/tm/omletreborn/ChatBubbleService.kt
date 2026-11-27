@@ -424,6 +424,192 @@ class ChatBubbleService : Service() {
         }
     }
 
+    private fun listenFriends() {
+        val uid=FirebaseAuth.getInstance().currentUser?.uid
+        val box=privateFriendsList ?: return
+        box.removeAllViews()
+        if(uid.isNullOrBlank()) {
+            box.addView(label("Đăng nhập Omlet Reborn để xem bạn bè."))
+            return
+        }
+        friendsListener?.remove()
+        friendsListener=FirebaseFirestore.getInstance().collection("friendships")
+            .whereArrayContains("memberUids",uid)
+            .addSnapshotListener { snap,err ->
+                val list=privateFriendsList ?: return@addSnapshotListener
+                list.removeAllViews()
+                if(err!=null) {
+                    list.addView(label("Không tải được danh sách bạn bè. Kiểm tra Firestore Rules."))
+                    return@addSnapshotListener
+                }
+                val friends=snap?.documents.orEmpty().mapNotNull { doc ->
+                    val ids=(doc.get("memberUids") as? List<*>)?.filterIsInstance<String>() ?: return@mapNotNull null
+                    val other=ids.firstOrNull { it!=uid } ?: return@mapNotNull null
+                    val names=doc.get("memberNames") as? Map<*,*>
+                    val name=names?.get(other) as? String ?: "Người chơi"
+                    other to name
+                }
+                if(friends.isEmpty()) {
+                    list.addView(label("Chưa có bạn bè. Hãy kết bạn trong tab Chat của ứng dụng Omlet Reborn."))
+                } else friends.forEach { (friendUid,friendName) ->
+                    val row=LinearLayout(this).apply {
+                        orientation=LinearLayout.HORIZONTAL
+                        gravity=Gravity.CENTER_VERTICAL
+                        setPadding(dp(9),dp(7),dp(9),dp(7))
+                        background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                            intArrayOf(Color.rgb(5,8,15),Color.rgb(58,62,72))).apply {
+                            cornerRadius=dp(13).toFloat()
+                        }
+                    }
+                    row.addView(TextView(this).apply {
+                        text=friendName.take(1).uppercase()
+                        textSize=21f; gravity=Gravity.CENTER; typeface=Typeface.DEFAULT_BOLD
+                        setTextColor(Color.WHITE)
+                        background=GradientDrawable().apply {
+                            setColor(Color.rgb(30,155,75)); cornerRadius=dp(10).toFloat()
+                        }
+                    },LinearLayout.LayoutParams(dp(48),dp(48)))
+                    row.addView(TextView(this).apply {
+                        text=friendName.uppercase()
+                        textSize=14f; typeface=Typeface.DEFAULT_BOLD
+                        setTextColor(Color.WHITE); gravity=Gravity.CENTER_VERTICAL
+                        setPadding(dp(9),0,dp(6),0)
+                    },LinearLayout.LayoutParams(0,dp(48),1f))
+                    row.addView(TextView(this).apply {
+                        text="CHAT"; textSize=11f; gravity=Gravity.CENTER
+                        typeface=Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE)
+                        setPadding(dp(12),dp(10),dp(12),dp(10))
+                        background=GradientDrawable().apply {
+                            setColor(Color.rgb(25,95,210)); cornerRadius=dp(8).toFloat()
+                        }
+                    })
+                    row.setOnClickListener { openPrivateChat(friendUid,friendName) }
+                    list.addView(row,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(7) })
+                }
+            }
+    }
+
+    private fun openPrivateChat(friendUid:String,friendName:String) {
+        val uid=FirebaseAuth.getInstance().currentUser?.uid ?: return
+        selectedPrivateFriend=friendUid to friendName
+        privateChatHome?.visibility=View.GONE
+        val area=privateChatArea ?: return
+        area.removeAllViews()
+        area.visibility=View.VISIBLE
+        val header=LinearLayout(this).apply {
+            orientation=LinearLayout.HORIZONTAL
+            gravity=Gravity.CENTER_VERTICAL
+        }
+        header.addView(TextView(this).apply {
+            text="‹"; textSize=30f; gravity=Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                privateMessageListener?.remove(); privateMessageListener=null
+                selectedPrivateFriend=null
+                area.visibility=View.GONE
+                privateChatHome?.visibility=View.VISIBLE
+            }
+        },LinearLayout.LayoutParams(dp(42),dp(48)))
+        header.addView(TextView(this).apply {
+            text=friendName; textSize=17f; typeface=Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE); gravity=Gravity.CENTER_VERTICAL
+        },LinearLayout.LayoutParams(0,dp(48),1f))
+        header.addView(label("CHAT RIÊNG"))
+        area.addView(header)
+
+        val messagesScroll=ScrollView(this)
+        privateMessagesList=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(7),dp(8),dp(7),dp(8))
+        }
+        messagesScroll.addView(privateMessagesList)
+        area.addView(messagesScroll,LinearLayout.LayoutParams(-1,0,1f))
+
+        val sendRow=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL }
+        privateMessageInput=EditText(this).apply {
+            hint="Nhắn tin riêng…"; setSingleLine(); textSize=13f
+            setTextColor(Color.WHITE); setHintTextColor(Color.LTGRAY)
+        }
+        sendRow.addView(privateMessageInput,LinearLayout.LayoutParams(0,dp(44),1f))
+        sendRow.addView(TextView(this).apply {
+            text="GỬI"; gravity=Gravity.CENTER; setTextColor(Color.WHITE)
+            typeface=Typeface.DEFAULT_BOLD
+            background=GradientDrawable().apply { setColor(Color.rgb(25,95,210)); cornerRadius=dp(8).toFloat() }
+            setOnClickListener { sendPrivateMessage() }
+        },LinearLayout.LayoutParams(dp(60),dp(44)))
+        area.addView(sendRow)
+
+        val cid=listOf(uid,friendUid).sorted().joinToString("_")
+        val names=mapOf(uid to (FirebaseAuth.getInstance().currentUser?.email?.substringBefore("@") ?: "Người chơi"),friendUid to friendName)
+        FirebaseFirestore.getInstance().collection("conversations").document(cid)
+            .set(mapOf("memberUids" to listOf(uid,friendUid).sorted(),"memberNames" to names),
+                com.google.firebase.firestore.SetOptions.merge())
+            .addOnSuccessListener {
+                if(selectedPrivateFriend?.first==friendUid) listenPrivateMessages(cid)
+            }
+            .addOnFailureListener { privateMessagesList?.addView(label("Không mở được cuộc trò chuyện. Kiểm tra Firestore Rules.")) }
+    }
+
+    private fun listenPrivateMessages(conversationId:String) {
+        privateMessageListener?.remove()
+        privateMessagesList?.removeAllViews()
+        privateMessageListener=FirebaseFirestore.getInstance().collection("conversations")
+            .document(conversationId).collection("messages")
+            .orderBy("createdAt").limit(100)
+            .addSnapshotListener { snap,err ->
+                val box=privateMessagesList ?: return@addSnapshotListener
+                box.removeAllViews()
+                if(err!=null) {
+                    box.addView(label("Không tải được tin nhắn riêng."))
+                    return@addSnapshotListener
+                }
+                val myUid=FirebaseAuth.getInstance().currentUser?.uid
+                snap?.documents?.forEach { doc ->
+                    val mine=doc.getString("senderUid")==myUid
+                    val bubble=TextView(this).apply {
+                        text=(if(mine) "Bạn: " else (doc.getString("senderName") ?: "Bạn bè")+": ")+
+                            (doc.getString("text") ?: "")
+                        textSize=13f; setTextColor(Color.WHITE)
+                        setPadding(dp(10),dp(8),dp(10),dp(8))
+                        background=GradientDrawable().apply {
+                            setColor(if(mine) Color.rgb(25,85,185) else Color.rgb(48,55,75))
+                            cornerRadius=dp(11).toFloat()
+                        }
+                    }
+                    box.addView(bubble,LinearLayout.LayoutParams(-1,-2).apply {
+                        bottomMargin=dp(6)
+                        leftMargin=if(mine) dp(35) else 0
+                        rightMargin=if(mine) 0 else dp(35)
+                    })
+                }
+            }
+    }
+
+    private fun sendPrivateMessage() {
+        val uid=FirebaseAuth.getInstance().currentUser?.uid ?: return
+        val friend=selectedPrivateFriend ?: return
+        val text=privateMessageInput?.text?.toString()?.trim().orEmpty().take(300)
+        if(text.isBlank()) return
+        val cid=listOf(uid,friend.first).sorted().joinToString("_")
+        val db=FirebaseFirestore.getInstance()
+        val conversation=db.collection("conversations").document(cid)
+        val myName=FirebaseAuth.getInstance().currentUser?.email?.substringBefore("@") ?: "Người chơi"
+        conversation.set(mapOf(
+            "memberUids" to listOf(uid,friend.first).sorted(),
+            "memberNames" to mapOf(uid to myName,friend.first to friend.second)
+        ),com.google.firebase.firestore.SetOptions.merge())
+            .continueWithTask {
+                conversation.collection("messages").add(mapOf(
+                    "senderUid" to uid,
+                    "senderName" to myName,
+                    "text" to text,
+                    "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                ))
+            }
+            .addOnSuccessListener { privateMessageInput?.setText("") }
+            .addOnFailureListener { privateMessagesList?.addView(label("Gửi tin nhắn thất bại. Kiểm tra Firestore Rules.")) }
+    }
+
     private fun sendMessage() {
         val uid=FirebaseAuth.getInstance().currentUser?.uid ?: return
         val id=selectedRoom ?: run { status?.text="Chọn map trước khi chat."; return }
