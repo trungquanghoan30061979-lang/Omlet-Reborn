@@ -167,11 +167,25 @@ class ChatBubbleService : Service() {
                 }
             ))
             clipToOutline=true
-            addView(TextView(this@ChatBubbleService).apply {
+            val heroHeader=LinearLayout(this@ChatBubbleService).apply {
+                orientation=LinearLayout.HORIZONTAL
+                gravity=Gravity.CENTER_VERTICAL
+            }
+            heroHeader.addView(TextView(this@ChatBubbleService).apply {
+                text="‹"; textSize=38f; gravity=Gravity.CENTER
+                setTextColor(Color.WHITE)
+                background=GradientDrawable().apply {
+                    setColor(Color.argb(115,5,18,48))
+                    cornerRadius=dp(10).toFloat()
+                }
+                setOnClickListener { closePanel() }
+            },LinearLayout.LayoutParams(dp(42),dp(42)))
+            heroHeader.addView(TextView(this@ChatBubbleService).apply {
                 text="OMLET REBORN"; textSize=if(wide) 23f else 20f
                 typeface=Typeface.create("sans-serif-condensed",Typeface.BOLD)
                 gravity=Gravity.CENTER; setTextColor(Color.rgb(60,112,255))
-            },LinearLayout.LayoutParams(-1,dp(52)))
+            },LinearLayout.LayoutParams(0,dp(52),1f))
+            addView(heroHeader,LinearLayout.LayoutParams(-1,dp(52)))
             val spacer=View(this@ChatBubbleService)
             heroSpacer@ run {
                 addView(spacer,LinearLayout.LayoutParams(1,0,1f))
@@ -230,24 +244,10 @@ class ChatBubbleService : Service() {
         val worldPage=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
         val chatPage=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; visibility=View.GONE }
         val mapPage=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; visibility=View.GONE }
-        var chatPreview: VideoView? = null
-        var mapPreview: VideoView? = null
-        fun makePreview(resourceId:Int): VideoView = VideoView(this).apply {
-            setVideoURI(android.net.Uri.parse("android.resource://$packageName/$resourceId"))
-            setOnPreparedListener { player ->
-                player.isLooping=true
-                player.setVolume(0f,0f)
-                start()
-            }
-            setOnErrorListener { _,_,_ -> true }
-        }
         fun selectTab(which:Int) {
             worldPage.visibility=if(which==0) View.VISIBLE else View.GONE
             chatPage.visibility=if(which==1) View.VISIBLE else View.GONE
             mapPage.visibility=if(which==2) View.VISIBLE else View.GONE
-            if(which==1) { mapPreview?.pause(); chatPreview?.start() }
-            else if(which==2) { chatPreview?.pause(); mapPreview?.start() }
-            else { chatPreview?.pause(); mapPreview?.pause() }
             title.text=when(which) { 1->"CHAT CHUNG"; 2->"TẠO MAP"; else->"CÁC THẾ GIỚI" }
             tabs.removeAllViews()
             tabs.addView(tabButton("THẾ GIỚI",which==0,R.drawable.world_art){selectTab(0)},LinearLayout.LayoutParams(0,dp(42),1f))
@@ -265,8 +265,6 @@ class ChatBubbleService : Service() {
         rs.addView(roomList)
         worldPage.addView(rs,LinearLayout.LayoutParams(-1,0,1f))
 
-        chatPreview=makePreview(R.raw.chat)
-        chatPage.addView(chatPreview,LinearLayout.LayoutParams(dp(64),dp(64)).apply { gravity=Gravity.CENTER_HORIZONTAL })
         chatPage.addView(label("TIN NHẮN TRONG MAP ĐANG CHỌN"))
         val cs=ScrollView(this)
         chatList=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
@@ -287,8 +285,6 @@ class ChatBubbleService : Service() {
         chatPage.addView(send)
         chatPage.addView(label("Chat riêng sẽ được bổ sung ở bước tiếp theo."))
 
-        mapPreview=makePreview(R.raw.create_map)
-        mapPage.addView(mapPreview,LinearLayout.LayoutParams(dp(80),dp(112)).apply { gravity=Gravity.CENTER_HORIZONTAL })
         mapPage.addView(label("QUẢN LÝ THẾ GIỚI CỦA BẠN"))
         mapPage.addView(label("Map do bạn tạo sẽ hiện ở tab THẾ GIỚI. Chọn map để xem chat và trạng thái."))
         val createMapButton=TextView(this).apply {
@@ -364,18 +360,8 @@ class ChatBubbleService : Service() {
                     background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                         intArrayOf(Color.rgb(5,8,15),Color.rgb(55,60,68))).apply { cornerRadius=dp(13).toFloat() }
                 }
-                val mark=ImageView(this).apply {
-                    setImageResource(R.drawable.world_art)
-                    scaleType=ImageView.ScaleType.FIT_CENTER
-                    setPadding(dp(2),dp(2),dp(2),dp(2))
-                    background=GradientDrawable().apply {
-                        setColor(if(live) Color.rgb(45,105,88) else Color.rgb(18,45,92))
-                        cornerRadius=dp(11).toFloat()
-                    }
-                    clipToOutline=true
-                }
-                card.addView(mark,LinearLayout.LayoutParams(dp(48),dp(54)))
-                val details=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(9),0,0,0) }
+                // Không hiển thị avatar/biểu tượng riêng cho từng map.
+                val details=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(4),0,dp(8),0) }
                 details.addView(TextView(this).apply {
                     text=n.uppercase(); textSize=15f; typeface=Typeface.DEFAULT_BOLD
                     setTextColor(Color.WHITE)
