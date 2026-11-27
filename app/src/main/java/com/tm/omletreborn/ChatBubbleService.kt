@@ -20,6 +20,8 @@ class ChatBubbleService : Service() {
 
     private lateinit var wm: WindowManager
     private var bubble: TextView? = null
+    private var trashTarget: TextView? = null
+    private var trashParams: WindowManager.LayoutParams? = null
     private var panel: View? = null
     private var roomListener: ListenerRegistration? = null
     private var messageListener: ListenerRegistration? = null
@@ -76,17 +78,51 @@ class ChatBubbleService : Service() {
         }
         bubbleParams = lp(dp(58), dp(58)).apply { x = dp(10); y = resources.displayMetrics.heightPixels / 2 }
         var sx=0f; var sy=0f; var ox=0; var oy=0; var moved=false
+        fun showTrash() {
+            if(trashTarget!=null) return
+            val target=TextView(this).apply {
+                text="×"; textSize=34f; gravity=Gravity.CENTER
+                setTextColor(Color.WHITE); typeface=Typeface.DEFAULT_BOLD
+                background=GradientDrawable().apply {
+                    shape=GradientDrawable.OVAL
+                    setColor(Color.rgb(205,48,62))
+                    setStroke(dp(2),Color.WHITE)
+                }
+            }
+            val p=lp(dp(66),dp(66)).apply {
+                gravity=Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                y=dp(34)
+            }
+            trashTarget=target; trashParams=p
+            runCatching { wm.addView(target,p) }.onFailure { trashTarget=null; trashParams=null }
+        }
+        fun hideTrash() {
+            trashTarget?.let { runCatching { wm.removeView(it) } }
+            trashTarget=null; trashParams=null
+        }
         v.setOnTouchListener { _, e ->
             when(e.action) {
                 MotionEvent.ACTION_DOWN -> { sx=e.rawX; sy=e.rawY; ox=bubbleParams.x; oy=bubbleParams.y; moved=false; true }
                 MotionEvent.ACTION_MOVE -> {
                     val dx=(e.rawX-sx).toInt(); val dy=(e.rawY-sy).toInt()
-                    if(abs(dx)>dp(5)||abs(dy)>dp(5)) moved=true
+                    if(abs(dx)>dp(5)||abs(dy)>dp(5)) { moved=true; showTrash() }
                     bubbleParams.x=(ox+dx).coerceIn(0, resources.displayMetrics.widthPixels-dp(58))
                     bubbleParams.y=(oy+dy).coerceIn(0, resources.displayMetrics.heightPixels-dp(58))
-                    runCatching { wm.updateViewLayout(v,bubbleParams) }; true
+                    runCatching { wm.updateViewLayout(v,bubbleParams) }
+                    true
                 }
-                MotionEvent.ACTION_UP -> { if(!moved) openPanel(); true }
+                MotionEvent.ACTION_UP -> {
+                    val nearTrash = moved && e.rawY >= resources.displayMetrics.heightPixels-dp(145)
+                    hideTrash()
+                    if(nearTrash) {
+                        closePanel()
+                        bubble?.let { runCatching { wm.removeView(it) } }; bubble=null
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopSelf()
+                    } else if(!moved) openPanel()
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> { hideTrash(); true }
                 else -> true
             }
         }
@@ -101,10 +137,11 @@ class ChatBubbleService : Service() {
         val wide=screenW>screenH
         val root=LinearLayout(this).apply {
             orientation=LinearLayout.HORIZONTAL
+            clipToOutline=true
             setPadding(dp(5),dp(5),dp(5),dp(5))
             background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 intArrayOf(Color.rgb(4,7,18),Color.rgb(25,35,105),Color.rgb(49,58,170))).apply {
-                cornerRadius=0f
+                cornerRadius=dp(24).toFloat()
                 setStroke(dp(2),Color.rgb(52,105,220))
             }
         }
