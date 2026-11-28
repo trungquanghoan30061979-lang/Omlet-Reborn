@@ -223,7 +223,8 @@ private fun ChatPage(signedIn: Boolean, onLogin: () -> Unit) {
     DisposableEffect(uid) {
         if (!signedIn || uid.isBlank()) { onDispose { } }
         else {
-            val a = db.collection("friendships").whereArrayContains("memberUids", uid).addSnapshotListener { snap, _ ->
+            val a = db.collection("friendships").whereArrayContains("memberUids", uid).addSnapshotListener { snap, error ->
+                if(error!=null) info="Lỗi tải bạn bè: ${error.message ?: error.javaClass.simpleName}"
                 friends = snap?.documents?.mapNotNull { doc ->
                     val ids = (doc.get("memberUids") as? List<*>)?.filterIsInstance<String>() ?: return@mapNotNull null
                     val other = ids.firstOrNull { it != uid } ?: return@mapNotNull null
@@ -231,7 +232,8 @@ private fun ChatPage(signedIn: Boolean, onLogin: () -> Unit) {
                     ChatFriend(other, names?.get(other) as? String ?: "Người chơi")
                 } ?: emptyList()
             }
-            val b = db.collection("friendRequests").document(uid).collection("incoming").addSnapshotListener { snap, _ ->
+            val b = db.collection("friendRequests").document(uid).collection("incoming").addSnapshotListener { snap, error ->
+                if(error!=null) info="Lỗi tải lời mời: ${error.message ?: error.javaClass.simpleName}"
                 requests = snap?.documents?.map { ChatFriend(it.id, it.getString("senderName") ?: "Người chơi") } ?: emptyList()
             }
             onDispose { a.remove(); b.remove() }
@@ -298,7 +300,11 @@ private fun ChatPage(signedIn: Boolean, onLogin: () -> Unit) {
                             db.runBatch { batch ->
                                 batch.set(edge,mapOf("memberUids" to ids,"memberNames" to mapOf(uid to myName,person.uid to person.username),"senderUid" to person.uid,"recipientUid" to uid,"createdAt" to FieldValue.serverTimestamp()))
                                 batch.delete(request)
-                            }.addOnFailureListener { info="Không chấp nhận được lời mời. Kiểm tra Rules." }
+                            }.addOnSuccessListener {
+                                info="Đã kết bạn với ${person.username}."
+                            }.addOnFailureListener { error ->
+                                info="Lỗi chấp nhận lời mời: ${error.message ?: error.javaClass.simpleName}"
+                            }
                         }) { Text("Chấp nhận") }
                         TextButton(onClick={ db.collection("friendRequests").document(uid).collection("incoming").document(person.uid).delete() }) { Text("Từ chối") }
                     }
