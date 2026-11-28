@@ -46,7 +46,10 @@ service cloud.firestore {
         && request.resource.data.memberNames is map
         && request.resource.data.memberNames[request.auth.uid] is string
         && request.resource.data.memberNames[request.resource.data.senderUid] is string
-        && exists(/databases/$(database)/documents/friendRequests/$(request.auth.uid)/incoming/$(request.resource.data.senderUid));
+        && exists(/databases/$(database)/documents/friendRequests/$(request.auth.uid)/incoming/$(request.resource.data.senderUid))
+        && get(/databases/$(database)/documents/friendRequests/$(request.auth.uid)/incoming/$(request.resource.data.senderUid)).data.senderUid == request.resource.data.senderUid
+        && get(/databases/$(database)/documents/friendRequests/$(request.auth.uid)/incoming/$(request.resource.data.senderUid)).data.recipientUid == request.auth.uid
+        && get(/databases/$(database)/documents/friendRequests/$(request.auth.uid)/incoming/$(request.resource.data.senderUid)).data.senderName is string;
       allow update, delete: if false;
     }
     match /conversations/{conversationId} {
