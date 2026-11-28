@@ -31,9 +31,10 @@ service cloud.firestore {
     }
     // A friendship is created by the recipient while accepting the incoming request.
     match /friendships/{friendshipId} {
+      // Query dùng whereArrayContains("memberUids", currentUid) tự giới hạn
+      // kết quả vào các friendship có chứa người đang đăng nhập.
       allow get, list: if signedIn()
         && resource.data.memberUids is list
-        && resource.data.memberUids.size() == 2
         && request.auth.uid in resource.data.memberUids;
       allow create: if signedIn()
         && request.resource.data.recipientUid == request.auth.uid
